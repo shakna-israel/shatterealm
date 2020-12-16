@@ -53,9 +53,9 @@ if [ -d "${build_dir}" ]; then
 fi
 
 # Get length of site_dir
-site_dir_length=$(("$(echo "${site_dir}" | wc -c)" - 1))
+site_dir_length=$(($(echo "${site_dir}" | wc -c) - 1))
 # Get length of build_dir
-build_dir_length=$(("$(echo "${build_dir}" | wc -c)" - 1))
+build_dir_length=$(($(echo "${build_dir}" | wc -c) - 1))
 
 # Get files to render...
 file_list="$(mktemp)"
