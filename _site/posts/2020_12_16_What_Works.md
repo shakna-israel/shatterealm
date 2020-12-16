@@ -1,0 +1,29 @@
+# What works?
+
+> She leaned down, kissing him to pass a piece of biscuit to him with her tongue. He couldn't say it was the most delightful experience, but it was an attempt at romance, and he wasn't going to say no to her.
+
+> Vi giggled, "That didn't really work, did it?"
+
+> "Soggy." He mumbled with his mouth full.
+
+> "Twisted Strand", Chapter Eight
+
+One of the things that I find conspicuous in its absence in many of the books I read, or the TV I watch, is failure. I do understand that media is somewhat constrained, and you don't have the time to really let the character fail over and over, but it doesn't have to feel out of place.
+
+Generally, if the character fails, then it is called back later in the show, and shown that they hadn't actually failed, they had simply failed to grasp the full ramifications of some event.
+
+That... Is lazy writing.
+
+It used to be innovative. It was an oft-used trope of Agatha Christie and Doyle, and their ilk. Thus, it was strange and different because they had yet to define an entire genre that has been repeatedly used so much now that the horse isn't just dead, but fossilised.
+
+However, failure doesn't need to move the _narrative_ along, so long as it moves the _characters_ in some way.
+
+The opening quote is my somewhat-poor attempt to explore this concept. In romance, especially the early days, you fail in all kinds of ways. Your partner doesn't necessarily like everything you do, and sometimes you try something new and it falls on its face. Sometimes spectacularly.
+
+Failure can be the perfect catalyst to show the deepening relationship between two characters, without dwelling on it. The above three sentences are surrounded by a much larger body of work, mostly discussing the impending doom that the narrative revolves around. Yet, in a quick moment you can see that Vi and Izcyiak are still learning each other, their relationship is becoming more deep-rooted, and it has the human characteristic of failure without feeling like anything is grinding to a halt.
+
+You don't need to tear a character into pieces to humanise them - just give them a moment where not everything is perfect.
+
+We don't live in a perfect world.
+
+Why would the people we write?
