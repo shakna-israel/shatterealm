@@ -1,4 +1,7 @@
-{% title = "Home" %}
+{%
+	title = "Home"
+%}
+{{ include(site_directory .. '/header.tpl', {title=title, toc=toc}) }}
 
 The [original Shatterealm](https://www.kobo.com/us/en/ebook/the-shatterealm) was a book I published containing every random short story I had written up until that point, and was some 1000 pages long.
 

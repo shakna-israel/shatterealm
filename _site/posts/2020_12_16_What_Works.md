@@ -28,3 +28,4 @@ We don't live in a perfect world.
 
 Why would the people we write?
 
+{{ include(site_directory .. '/footer.tpl', {toc=toc}) }}
