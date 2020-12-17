@@ -8,5 +8,5 @@ sources:
   - https://git.sr.ht/~shakna/shatterealm
 tasks:
   - build: |
-    cd suckgen
-    make
+     cd suckgen
+     make
