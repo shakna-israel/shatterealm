@@ -9,11 +9,11 @@
 <title>Shatterealm</title>
 {% end %}
 
-<link rel="stylesheet" href="{{base_url}}styles.css" />
+<link rel="stylesheet" href="{{base_url or '/' .. 'styles.css'}}" />
 </head>
 <body>
 
-<a href="{{ base_url }}">Home</a>
+<a href="{{ base_url or '/' }}">Home</a>
 
 {% if title then %}
 <h1>{{title}}</h1>
