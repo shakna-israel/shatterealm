@@ -9,7 +9,7 @@
 <title>Shatterealm</title>
 {% end %}
 
-<link rel="stylesheet" href="/styles.css" />
+<link rel="stylesheet" href="{{base_url}}styles.css" />
 </head>
 <body>
 {% if title then %}
