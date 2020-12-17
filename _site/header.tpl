@@ -12,6 +12,13 @@
 <link rel="stylesheet" href="{{base_url}}styles.css" />
 </head>
 <body>
+
+<a href="{{ base_url }}">Home</a>
+
 {% if title then %}
 <h1>{{title}}</h1>
+{% end %}
+
+{% if subtitle then %}
+<h2>{{subtitle}}</h2>
 {% end %}
