@@ -5,6 +5,10 @@ packages:
   - pkg-config
   - xxd
   - make
+  - curl
+  - zip
+secrets:
+  - 7d143ee9-613a-499b-b28e-bc871e180ecf
 sources:
   - https://git.sr.ht/~shakna/suckgen
   - https://git.sr.ht/~shakna/shatterealm
@@ -12,6 +16,9 @@ tasks:
   - build: |
      cd suckgen
      make
-  - deploy: |
+  - generate_blog: |
      cd shatterealm
      ../suckgen/suckgen
+  - deploy_blog: |
+     cd shatterealm
+     sh deploy_netlify.sh
