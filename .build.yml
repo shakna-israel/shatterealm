@@ -2,6 +2,7 @@ image: debian/stable
 packages:
   - lua5.3
   - lua5.3-dev
+  - pkg-config
   - xxd
   - make
 sources:
