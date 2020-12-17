@@ -12,3 +12,6 @@
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+{% if title then %}
+<h1>{{title}}</h1>
+{% end %}
