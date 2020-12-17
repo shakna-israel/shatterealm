@@ -1,0 +1,12 @@
+image: alpine/edge
+packages:
+  - lua5.3
+  - xxd
+  - make
+sources:
+  - https://git.sr.ht/~shakna/suckgen
+  - https://git.sr.ht/~shakna/shatterealm
+tasks:
+  - build: |
+    cd suckgen
+    make
