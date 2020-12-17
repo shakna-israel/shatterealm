@@ -9,6 +9,6 @@ cd ..
 . ~/auth_file
 
 curl -H "Content-Type: application/zip" \
-     -H "Authorization: ${auth}" \
+     -H "Authorization: Bearer ${auth}" \
      --data-binary "@website.zip" \
      https://api.netlify.com/api/v1/sites/shatterealm.netlify.app/deploys
