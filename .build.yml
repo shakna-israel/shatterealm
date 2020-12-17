@@ -12,3 +12,6 @@ tasks:
   - build: |
      cd suckgen
      make
+  - deploy: |
+     cd shatterealm
+     ../suckgen/suckgen
