@@ -1,5 +1,5 @@
 {%
-	title = 'Introducing Suckgen!'
+	subtitle = 'Introducing Suckgen!'
 	value = [[
 When it came time to design this blog, like every good programmer, I decided it would be far more fun and interesting to not write a single article, and instead write the generator that will create this blog.
 
@@ -7,7 +7,7 @@ The result was the incredibly undocumented [suckgen](https://git.sr.ht/~shakna/s
 
 The end product is in it's infancy, and incredibly well geared towards building this site and no other, and has a number of historical issues that will bug the hell out of anyone that will try and wrangle it.
 
-For example, base_url, site_directory and build_directory values are set at compile time, because I was interested in using the [Suckless Philosophy](https://suckless.org/coding_style/) when I was first designing it.
+For example, `base_url`, `site_directory` and `build_directory` values are set at compile time, because I was interested in using the [Suckless Philosophy](https://suckless.org/coding_style/) when I was first designing it.
 
 However, because we actually have Lua bundled and vital to all sorts of functions, it'd make a lot more sense to load those values via configuration. At some point I will probably get around to doing that. Maybe.
 
