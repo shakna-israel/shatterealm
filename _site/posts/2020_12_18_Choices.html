@@ -1,0 +1,28 @@
+{%
+	subtitle = 'Choices'
+	value = [[
+[Choices](https://choices.netlify.app/) is a game I started work on a while back.
+
+The prototype took me next to no time at all to spin up, I shoved together some data munging and a presentation engine with a tiny bit of animation.
+
+The idea being, you don't need a whole heap to make a half-decent Interactive Fiction engine.
+
+I completely [rewrote the engine from scratch](https://git.sr.ht/~shakna/choice_engine) once I proved it could work, so that it was more lightweight, and more flexible. Now, images and video, and inventory and all of that are trivial to add as-needed. Instead of focusing on beating a game engine into submission, I can focus on the writing.
+
+When it comes to story engines people are very used to only having a handful of options that actually effect the storyline. They're used to it, because tracking every conversation thread is a ridiculous premise - you don't want the amount of options to spontaneously explode into exponential numbers.
+
+Especially if you're talking about things that don't really effect the outcome of the story.
+
+`Choices` is an exploration of rejecting that premise out of hand. Just how many choices can the developer hand over to the reader and still manage to pull together a coherent storyline?
+
+At this early stage, only the Witch species, and only the Andromeda storyline, is being worked on. Currently there are four main threads, and it is at this point that the storyline will split into four. Most people will only find one of two, but I'm fine with that.
+
+People may attempt to map the individual choices and paths that they can lead you down. This is a common thing in Interactive Fiction, and my early attempts at Choices did use maps to try and do that... The maps become too large and too unwieldy to follow, too quickly. Because Choices doesn't attempt to control how your character behaves.
+
+Choices currently has around 20 decisions that the user can make, which is piddlingly little, and really only covers introducing your character to Andromeda. But that the number is high just for introductions makes the user feel like there is more content than there actually is.
+
+That's the experiment of Choices - can a completely linear world feel like an open sandbox environment, if there are enough decisions to be made?
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl', data)}}
