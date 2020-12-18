@@ -1,0 +1,82 @@
+{%
+	title = 'Introducing Suckgen!'
+	value = [[
+When it came time to design this blog, like every good programmer, I decided it would be far more fun and interesting to not write a single article, and instead write the generator that will create this blog.
+
+The result was the incredibly undocumented [suckgen](https://git.sr.ht/~shakna/suckgen).
+
+The end product is in it's infancy, and incredibly well geared towards building this site and no other, and has a number of historical issues that will bug the hell out of anyone that will try and wrangle it.
+
+For example, base_url, site_directory and build_directory values are set at compile time, because I was interested in using the [Suckless Philosophy](https://suckless.org/coding_style/) when I was first designing it.
+
+However, because we actually have Lua bundled and vital to all sorts of functions, it'd make a lot more sense to load those values via configuration. At some point I will probably get around to doing that. Maybe.
+
+---
+
+## Basic Overview
+
+Suckgen is _dead simple_.
+
+It uses the wonderful `nftw` from Linux's C functions to walk the directory trees, which comes with the lovely guarantees of walking directories in order and before walking a single file, allowing you to duplicate directory structures really easily.
+
+The process of the walk is pretty simple, too, though a little bit repetitive.
+
+1. We walk the tree and form a basic list of HTML paths that will probably exist when the render is complete.
+
+2. We send off this basic list, and throw the appropriate files through our rendering process to extract metadata, such as titles. If no title is found then the name linked to the path becomes a title-cased version of the containing folder, if one exists, followed by a title-cased and underscore-to-hyphen replaced name. See [gen_toc.lua](https://git.sr.ht/~shakna/suckgen/tree/master/src/gen_toc.lua) for more.
+
+3. We re-walk the tree and expand any template files, and copy any non-template files into the build directory.
+
+Obviously, race conditions can fuck all this up. So the simple answer is: Don't create or delete files in the site directory whilst things are happening.
+
+To that end... This blog is actually built in an isolated environment. We've got a super-simple pipeline that builds suckgen, and then the site, and then deploys it all, every time we push a new commit to our version control. Which, of course, you can see [here](https://git.sr.ht/~shakna/shatterealm/tree/master/.build.yml).
+
+---
+
+## Templates
+
+The template engine we're using is, surprisingly enough, Lua. As in, all template files are basically just Lua turned inside out.
+
+From the lexer inside the template engine:
+
+> Converts the given string to equivalent
+
+> Lua code but turning things "inside out".
+
+> Most things get converted to a string.
+
+> Strings are using [===[ and ]===] as the outer symbols.
+
+> So avoid those.
+
+> Things inside \{% and %\} get treated as a Lua statement.
+
+> Things inside {\{ and }\} get placed inside tostring. (Called 'value')
+
+However, because I'm not completely off my rocker, the rendering engine has a constrained amount of access to the Lua runtime. It isn't a complete sandbox, because I _want_ to provide access to things like `assert`, but it's good enough.
+
+And like any good template engine, you can include other files that inherit a copy of the current environment and so on.
+
+---
+
+## Markdown
+
+Unfortunately, the markdown renderer in question isn't perfect. It doesn't have a full grasp of HTML, so injecting arbitrary HTML into it doesn't work all that well. Such as trying to wrap the `doctype` in a `p` element...
+
+However, working around that is simple enough - check out the [source of one of my post files](https://git.sr.ht/~shakna/shatterealm/tree/master/_site/posts/2020_12_16_What_Works.html) for an example. We basically build the markdown as a value, and then use an include ([this one](https://git.sr.ht/~shakna/shatterealm/tree/master/_site/post.tpl)) to specify how to layout the page, only rendering the markdown we care about, and leaving the rest of the HTML intact.
+
+That workaround does mean you'll need to use `format` to inject data values into the Markdown, but I tend not to need that stuff in my body text, more for the templating.
+
+---
+
+## Summing Up
+
+All in all `suckgen` does what I want, how I want, whilst mostly getting out of my way.
+
+It definently isn't for everyone. Most people don't really want a full Turing-complete language in their template files. They don't want massive tracebacks when they break their template engine.
+
+But, as I can compile the latest suckgen, compile this site, and release a new version in less than a minute, I am more than pleased with the result.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl', data)}}
