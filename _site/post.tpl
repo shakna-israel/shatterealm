@@ -1,4 +1,4 @@
-{{ include(site_directory .. '/header.tpl', {toc=toc, subtitle=subtitle, title=title}) }}
+{{ include(site_directory .. '/header.tpl', {subtitle=subtitle, title=title}) }}
 
 <article>
 {{ markdown(value) }}
