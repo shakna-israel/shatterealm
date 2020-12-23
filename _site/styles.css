@@ -20,7 +20,7 @@ blockquote {
 	background-color: rgba(0, 0, 0, 0.05);
 }
 
-@media (max-width: 40em) {
+@media (min-width: 40em) {
 	body {
 		max-width: 650px;
 		max-width: 60vw;
