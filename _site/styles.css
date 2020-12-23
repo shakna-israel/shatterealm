@@ -16,7 +16,10 @@ h3 {
 }
 
 @media (prefers-color-scheme: dark) {
-  filter: invert(90%) hue-rotate(25deg);
+  body {
+  	filter: invert(90%) hue-rotate(25deg);
+  	background-color: black;
+  }
 
   img, video, iframe {
     filter: invert(100%) hue-rotate(-25deg);
