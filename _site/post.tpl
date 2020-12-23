@@ -15,7 +15,7 @@
 {% elseif type(value) == 'table' then %}
 <article>
 {% for index, text in ipairs(value) do %}
-{{ markdown(iformat(value, _G)) }}
+{{ markdown(iformat(text, _G)) }}
 {% end %}
 </article>
 {% end %}
