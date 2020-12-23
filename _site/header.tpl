@@ -10,6 +10,8 @@
 {% end %}
 
 <link rel="stylesheet" href="{{(base_url or '/') .. 'styles.css'}}" />
+
+<link rel="alternate" type="application/rss+xml" title="Shatterealm RSS" href="{{(base_url or '/') .. 'feed.xml'}}"/>
 </head>
 <body>
 
