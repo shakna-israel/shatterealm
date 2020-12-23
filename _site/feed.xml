@@ -18,13 +18,11 @@
   {% elseif value.value then %}
     {% if type(value.value) == 'string' then %}
       <description>
-      {{ markdown(iformat(value.value, _G)) }}
+      {{ markdown(iformat(value.value:sub(1, 250) .. '...', _G)) }}
       </description>
     {% elseif type(value.value) == 'table' then %}
       <description>
-      {% for index, text in ipairs(value.value) do %}
-        {{ markdown(iformat(text, _G)) }}
-      {% end %}
+      {{ markdown(iformat(value.value[1]:sub(1, 250) .. '...', _G)) }}
       </description>
     {% else %}
       <description>{{ value.name }}</description>
