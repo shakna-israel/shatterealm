@@ -29,7 +29,3 @@
 {% if subtitle then %}
 <h2>{{subtitle}}</h2>
 {% end %}
-
-{% if title or subtitle then %}
-<hr />
-{% end %}

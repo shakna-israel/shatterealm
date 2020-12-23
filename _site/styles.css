@@ -9,6 +9,10 @@ body {
 	padding: 0 10px;
 }
 
+footer hr {
+	width: 80%;
+}
+
 h1,
 h2,
 h3 {
