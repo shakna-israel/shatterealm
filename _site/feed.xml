@@ -14,26 +14,24 @@
   <title>{{ value.name }}</title>
 
   {% if value.description then %}
-  <description>{{ value.description }}</description>
+    <description>{{ value.description }}</description>
   {% elseif value.value then %}
-  {% if type(value.value) == 'string' then %}
-  <description>
-  {{ markdown(iformat(value.value, _G)) }}
-  </description>
-  {% elseif type(value.value) == 'table' then %}
-  <description>
-  {% for index, text in ipairs(value.value) do %}
-  {{ markdown(iformat(text, _G)) }}
-  {% end %}
-  </description>
+    {% if type(value.value) == 'string' then %}
+      <description>
+      {{ markdown(iformat(value.value, _G)) }}
+      </description>
+    {% elseif type(value.value) == 'table' then %}
+      <description>
+      {% for index, text in ipairs(value.value) do %}
+        {{ markdown(iformat(text, _G)) }}
+      {% end %}
+      </description>
+    {% else %}
+      <description>{{ value.name }}</description>
+    {% end %}
   {% else %}
   <description>{{ value.name }}</description>
   {% end %}
-  {% else %}
-  <description>{{ value.name }}</description>
-  {% end %}
-
-  <description>{{ value.description or value.name }}</description>
   <link>{{ config.host .. value.path }}</link>
   <guid isPermaLink="false">{{ config.host .. value.path }}</guid>
  </item>
