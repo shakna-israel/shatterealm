@@ -1,0 +1,42 @@
+{%
+	subtitle = 'Suckgen Improvements'
+	description = 'Suckgen improvements - dynamic config, documentation.'
+	value = [[The static generator used to create this site, [suckgen](https://git.sr.ht/~shakna/suckgen) has had some improvements that are worth talking a little bit about.
+
+## Basic Documentation
+
+I've finally added some basic documentation in the form of the [README](https://git.sr.ht/~shakna/suckgen/tree/master/item/README.md), including building and basic usage. It should be enough to get a determined someone off the ground, especially as they can peek at the [code of this site](https://git.sr.ht/~shakna/shatterealm/) to help out.
+
+## New Configuration Format
+
+Suckgen has now also deprecated the static configuration file, in favour of loading a Lua config file. The old behaviour should continue to work, but if it breaks, I probably won't care enough to fix it.
+
+The use of a config file now also means that you can create your own global variables that you can use across all files, which we're already taking advantage on this site.
+
+## TOC Improvements
+
+The TOC variables now try and also carry the model data, so if a page has a `description` variable, for example, you can now access it when iterating the TOC.
+
+Sorting is now more intelligent, based on a proper byte-by-byte string comparison of the `name` variable.
+
+## Template Improvements
+
+The template renderer now also renders `xml` files.
+
+Future: At some point you should be able to control what files are rendered with your configuration file, but not yet.
+
+## Bug Fixes
+
+A bunch of bug fixes have been added.
+
+* Template engine creates less incidental whitespace. Especially after `{\{` and `}\}` injections.
+
+* Off-by-one errors when creating path variables should be gone, now.
+
+* Processing template bail-out errors now give a hint as to what went wrong to `stderr`.
+
+* Prevent `include` from overwriting the entire template by accident.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
