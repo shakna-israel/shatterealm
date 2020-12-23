@@ -1,3 +1,4 @@
+<hr />
 <footer>
 <ul>
 {% for index, v in pairs(toc) do %}

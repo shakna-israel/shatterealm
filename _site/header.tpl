@@ -20,6 +20,7 @@
 <body>
 
 <a href="{{ base_url or '/' }}">Home</a>
+<hr />
 
 {% if title then %}
 <h1>{{title}}</h1>
@@ -27,4 +28,8 @@
 
 {% if subtitle then %}
 <h2>{{subtitle}}</h2>
+{% end %}
+
+{% if title or subtitle then %}
+<hr />
 {% end %}
