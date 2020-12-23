@@ -10,8 +10,12 @@
 {% end %}
 
 <link rel="stylesheet" href="{{(base_url or '/') .. 'styles.css'}}" />
-
 <link rel="alternate" type="application/rss+xml" title="Shatterealm RSS" href="{{(base_url or '/') .. 'feed.xml'}}"/>
+
+<link rel="apple-touch-icon" sizes="180x180" href="{{(base_url or '/') .. 'apple-touch-icon.png'}}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{(base_url or '/') .. 'favicon-32x32.png'}}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{(base_url or '/') .. 'favicon-16x16.png'}}">
+<link rel="manifest" href="{{(base_url or '/') .. 'site.webmanifest'}}">
 </head>
 <body>
 
