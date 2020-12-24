@@ -11,7 +11,7 @@
 	elseif v.value then
 		descriptor = v.value:sub(1, 50) .. '...'
 	else
-		descriptor = '...'
+		descriptor = v.title or v.name or '...'
 	end
 %}
 
@@ -32,7 +32,7 @@
 {% if index > 7 then break end %}
 {% end %}
 {% end %}
-<li><a href="{{(base_url or '/') .. 'all.html'}}">All Posts</a></li>
-<li><a href="{{(base_url or '/') .. 'feed.xml'}}">RSS Feed</a></li>
+<li><a href="{{(base_url or '/') .. 'all.html'}}" title="All Posts">All Posts</a></li>
+<li><a href="{{(base_url or '/') .. 'feed.xml'}}" title="RSS Feed">RSS Feed</a></li>
 </ul>
 </footer>
