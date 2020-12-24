@@ -32,6 +32,10 @@ a:hover {
 	text-decoration: underline;
 }
 
+details {
+	padding: 0.5em;
+}
+
 @media (min-width: 40em) {
 	body {
 		max-width: 650px;
@@ -40,6 +44,7 @@ a:hover {
 
 	details {
 		display: inline-block;
+		padding: 0;
 	}
 }
 
