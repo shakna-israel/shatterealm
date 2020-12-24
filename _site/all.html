@@ -6,7 +6,31 @@
 <h2 id="everything"><a href="#everything">Everything</a></h2>
 <ul>
 {% for index, v in pairs(toc) do %}
-<li><a href="{{v.path}}">{{v.name}}</a></li>
+
+<li>
+{% if v.directory then %}
+
+{%
+	local last_num = v.sortname:match('^.*()%d')
+	local date_section = v.sortname:sub(1, last_num)
+	local word_section = v.sortname:sub(last_num + 1)
+
+	date_section = date_section:gsub(" ", "-")
+
+	local name = word_section .. ' [' .. v.directory .. ']' .. ' (' .. date_section .. ')'
+%}
+<a href="{{v.path}}">{{name}}</a>
+{% else %}
+<a href="{{v.path}}">{{v.name}}</a>
+{% end %}
+
+{% if v.description then %}
+<br /><small>{{v.description}}</small>
+{% elseif v.value then %}
+<br /><small>{{markdown(iformat(v.value:sub(1, 150) .. '...', _G or {}))}}</small>
+{% end %}
+
+</li>
 {% end %}
 </ul>
 <hr />
@@ -30,7 +54,27 @@
 
 <ul>
 	{% for index, v in ipairs(list) do %}
-	<li><a href="{{v.path}}">{{v.sortname}}</a></li>
+
+	{%
+		local last_num = v.sortname:match('^.*()%d')
+		local date_section = v.sortname:sub(1, last_num)
+		local word_section = v.sortname:sub(last_num + 1)
+
+		date_section = date_section:gsub(" ", "-")
+
+		local name = word_section .. ' (' .. date_section .. ')'
+	%}
+
+	<li>
+		<a href="{{v.path}}">{{name}}</a>
+
+		{% if v.description then %}
+		<br /><small>{{v.description}}</small>
+		{% elseif v.value then %}
+		<br /><small>{{markdown(iformat(v.value:sub(1, 150) .. '...', _G or {}))}}</small>
+		{% end %}
+		
+	</li>
 	{% end %}
 </ul>
 <hr />
