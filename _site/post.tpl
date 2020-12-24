@@ -10,12 +10,12 @@
 
 {% if type(value) == 'string' then %}
 <article>
-{{ markdown(iformat(value, _G)) }}
+{{ markdown(iformat(value, _G or {})) }}
 </article>
 {% elseif type(value) == 'table' then %}
 <article>
 {% for index, text in ipairs(value) do %}
-{{ markdown(iformat(text, _G)) }}
+{{ markdown(iformat(text, _G or {})) }}
 {% end %}
 </article>
 {% end %}

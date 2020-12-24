@@ -1,6 +1,17 @@
 {%
+	get_link = function(key)
+		for index, value in ipairs(toc) do
+			if value.name == key then
+				return value.path
+			end
+		end
+
+		-- TOC is empty table on first-pass...
+		return ''
+	end
+
 	subtitle = 'Suckgen Improvements'
-	value = [[The static generator used to create this site, [suckgen](https://git.sr.ht/~shakna/suckgen) has had some improvements that are worth talking a little bit about.
+	value = format([[The static generator used to create this site, [suckgen](https://git.sr.ht/~shakna/suckgen) has had some improvements that are worth talking a little bit about. We introduced suckgen [here](%s).
 
 ### Basic Documentation
 
@@ -35,7 +46,7 @@ A bunch of bug fixes have been added.
 * Processing template bail-out errors now give a hint as to what went wrong to `stderr`.
 
 * Prevent `include` from overwriting the entire template by accident.
-]]
+]], get_link("Programming/2020-12-18-Suckgen"))
 %}
 
 {{ include(site_directory .. '/post.tpl')}}
