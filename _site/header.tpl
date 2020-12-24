@@ -16,6 +16,11 @@
 <link rel="icon" type="image/png" sizes="32x32" href="{{(base_url or '/') .. 'favicon-32x32.png'}}">
 <link rel="icon" type="image/png" sizes="16x16" href="{{(base_url or '/') .. 'favicon-16x16.png'}}">
 <link rel="manifest" href="{{(base_url or '/') .. 'site.webmanifest'}}">
+
+<meta name="generator" content="suckgen">
+<meta name="rating" content="General">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="{{config.description or ''}}">
 </head>
 <body>
 
