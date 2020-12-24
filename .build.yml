@@ -17,7 +17,7 @@ tasks:
   - build: |
      cd suckgen
      make all
-     make test
+     make test SUPPRESS='--suppressions=debian_suppress'
   - generate_blog: |
      cd shatterealm
      ../suckgen/suckgen
