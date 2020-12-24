@@ -1,0 +1,24 @@
+{%
+	get_link = function(key)
+		for index, value in ipairs(toc) do
+			if value.name == key then
+				return value.path
+			end
+		end
+
+		-- TOC is empty table on first-pass...
+		return ''
+	end
+
+	subtitle = 'Site Overall Improvements'
+	value = format([[A number of very small improvements have been added that should make the site feel nicer.
+
+Firstly, I've rewritten the way that TOC links appear, and secondly, the number that will appear. All the others have been pushed to the new [All Posts](%s) page (which includes a bunch of preview text, and so on). I'm considering if there's a way to make use of the `details` and `summary` HTML elements to default hide/show the rest of the links, but for now pushing them to another page is fine.
+
+The footer TOC links also include hover-text as a sort of preview, which feels a little bit awesome. (Screenreaders - it's title text, so you'll probably hear it if you focus on a link).
+
+All posts pages now include an estimated reading time, using the average 220WPM estimate.
+]], get_link("All Posts"))
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
