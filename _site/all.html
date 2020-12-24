@@ -3,8 +3,36 @@
 %}
 {{ include(site_directory .. '/header.tpl', {title=title}) }}
 
+<h2 id="everything"><a href="#everything">Everything</a></h2>
 <ul>
 {% for index, v in pairs(toc) do %}
 <li><a href="{{v.path}}">{{v.name}}</a></li>
 {% end %}
 </ul>
+<hr />
+
+{%
+	local categories = {}
+
+	for index, v in pairs(toc) do
+		if v.directory then
+			if not categories[v.directory] then
+				categories[v.directory] = {}
+			end
+
+			categories[v.directory][#categories[v.directory] + 1] = v
+		end
+	end
+%}
+
+{% for k, list in pairs(categories) do %}
+<h2 id="{{k}}"><a href="#{{k}}">{{k}}</a></h2>
+
+<ul>
+	{% for index, v in ipairs(list) do %}
+	<li><a href="{{v.path}}">{{v.name}}</a></li>
+	{% end %}
+</ul>
+<hr />
+
+{% end %}
