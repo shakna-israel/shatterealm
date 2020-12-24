@@ -18,7 +18,7 @@
 		end
 	end
 
-	wpm = format("%.2f", 220 / word_n)
+	wpm = format("%.2f", word_n / 220)
 %}
 
 {% if type(value) == 'string' then %}
