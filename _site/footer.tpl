@@ -4,6 +4,17 @@
 {% for index, v in pairs(toc) do %}
 {% if v.name ~= "All Posts" then %}
 
+{%
+	local descriptor
+	if v.description then
+		descriptor = v.description
+	elseif v.value then
+		descriptor = v.value:sub(1, 50) .. '...'
+	else
+		descriptor = '...'
+	end
+%}
+
 {% if v.directory then %}
 {%
 	local last_num = v.sortname:match('^.*()%d')
@@ -14,9 +25,9 @@
 
 	local name = word_section .. ' [' .. v.directory .. ']' .. ' (' .. date_section .. ')'
 %}
-<li><a href="{{v.path}}">{{name}}</a></li>
+<li><a href="{{v.path}}" title="{{descriptor}}">{{name}}</a></li>
 {% else %}
-<li><a href="{{v.path}}">{{v.name}}</a></li>
+<li><a href="{{v.path}}" title="{{descriptor}}">{{v.name}}</a></li>
 {% end %}
 {% if index > 7 then break end %}
 {% end %}
