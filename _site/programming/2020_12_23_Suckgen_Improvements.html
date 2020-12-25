@@ -1,15 +1,4 @@
 {%
-	get_link = function(key)
-		for index, value in ipairs(toc) do
-			if value.name == key then
-				return value.path
-			end
-		end
-
-		-- TOC is empty table on first-pass...
-		return ''
-	end
-
 	subtitle = 'Suckgen Improvements'
 	value = format([[The static generator used to create this site, [suckgen](https://git.sr.ht/~shakna/suckgen) has had some improvements that are worth talking a little bit about. We introduced suckgen [here](%s).
 

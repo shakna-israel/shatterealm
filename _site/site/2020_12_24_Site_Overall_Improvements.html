@@ -1,15 +1,4 @@
 {%
-	get_link = function(key)
-		for index, value in ipairs(toc) do
-			if value.name == key then
-				return value.path
-			end
-		end
-
-		-- TOC is empty table on first-pass...
-		return ''
-	end
-
 	subtitle = 'Site Overall Improvements'
 	value = format([[A number of very small improvements have been added that should make the site feel nicer.
 
