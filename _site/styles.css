@@ -13,6 +13,10 @@ footer hr {
 	width: 80%;
 }
 
+pre, code {
+	overflow: auto;
+}
+
 h1,
 h2,
 h3 {

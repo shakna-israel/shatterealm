@@ -1,0 +1,114 @@
+{%
+	subtitle = 'JLML - Markup in 62 LOC'
+	value = [[
+Creating a new markup language can be an incredibly intimidating task, and most of the time it will be nothing but an educational task - not something you'll rely on beyond the timeline of getting the project up and running.
+
+However, with a clear goal in mind, it _can_ be possible to do it fairly quickly, especially if you already have a bit of an idea of how you want to shape it.
+
+For example, in a couple of hours I managed to throw together [JLML](https://git.sr.ht/~shakna/jlml) _and_ integrate it into [suckgen](https://git.sr.ht/~shakna/suckgen), so I can use it on this site. And honestly, 90% of that was integrating it with suckgen. It might have taken about ten minutes to create JLML.
+
+So, without further ado, I present to you some example JLML:
+
+	body {
+		p {
+			style = "color:red",
+			p {
+				"Hello World!"
+			}
+		},
+		p {
+			id = "some_id",
+			style = "color:blue",
+			["dataset-value"] = "somevalue",
+			p {
+				"Hello World!"
+			}
+		}
+	}
+
+It immediately becomes obvious that my intended goal for this is to render HTML. That's the narrow scope, and by being narrow like that, we can achieve our goal relatively easily.
+
+In point of fact, we can use Lua to achieve the goal with the sandboxing feature, because Lua already has some of the syntax features that we want.
+
+In Lua, if you have a function name, followed by a table, it will call that function and pass the table to it as a first argument. That is: `foo({1, 2, 3}) == foo {1 2 3}`.
+
+Secondly, Lua allows you to control what happens if a table doesn't have a key present, and it just so happens that when you're using the sandboxing features, the environment is itself a table.
+
+Putting those together...
+
+	local element = function(kind)
+		return function(t)
+			local attr_strings = {}
+			for k, v in pairs(t) do
+				if tonumber(k) == nil then
+					attr_strings[#attr_strings+1] = string.format("%s=%q", k, v)
+				end
+			end
+
+			local attr = ""
+			if #attr_strings > 0 then
+				attr = " " .. table.concat(attr_strings, " ")
+			end
+			local content = table.concat(t, "")
+
+			return string.format('<%s%s>', kind, attr) .. content .. string.format('</%s>', kind)
+		end
+	end
+
+This function takes a tagname, and returns a function expecting a table that eventually compiles to a string. Named keys are assembled into attributes, and unnamed keys are concatenated.
+
+And then we can build the environment that we'll pass to the sandbox later on, where if a function isn't known (a tag that hasn't been seen before), we simply construct one:
+
+	local meta = {
+		__index = function(self, key)
+			if rawget(self, key) ~= nil then
+				return rawget(self, key)
+			else
+				self[key] = element[key]
+				return rawget(self, key)
+			end
+		end
+	}
+
+	local env = {}
+	env._G = env
+	setmetatable(env, meta)
+
+Finally, we just need some helper functions to make use of the environment that we've built, to render the markup for us:
+
+	local render_data = function(rawdata)
+		local statement = 'return ' .. rawdata
+		local x = load(statement, nil, nil, env)
+		if x then
+			local status, ret = pcall(x)
+			if status then
+				return ret
+			end
+		end
+	end
+
+	local render_file = function(filename)
+		local f = io.open(filename, 'rb')
+		if f ~= nil then
+			local rawdata = f:read("*all")
+			f:close()
+
+			return render_data(rawdata)
+		end
+	end
+
+We return `nil` if anything goes wrong, but otherwise we return the built string.
+
+And... That's it.
+
+That's all there is to the entire markup language, mostly because we cheated and used Lua's syntax. However, we don't really need to care about that at all. Because what we care about is whether it works.
+
+And passing the markup from the introduction gives us:
+
+	<body><p style="color:red"><p>Hello World!</p></p><p dataset-value="somevalue" style="color:blue" id="some_id"><p>Hello World!</p></p></body>
+
+Obviously this will only work for non-self-closing tags, and it would be easy to render something that isn't valid HTML, but we don't really care about that at all. It's a quick and simple markup format, with a few nice properties for us to make use of, and it didn't take months to put together a decent parser engine that will do exactly what we want.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
