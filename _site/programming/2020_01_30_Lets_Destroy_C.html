@@ -22,18 +22,13 @@ We won't dwell on many C features. If they're not obvious to you, there's a lot 
 First of all, let's fix up a simple program:
 
 
-```C
+    #include <stdio.h>
 
-#include <stdio.h>
+    int main(int argc, char* argv[]) {
 
-int main(int argc, char* argv[]) {
+      printf("%s\n", "Hello, World!");
 
-  printf("%s\n", "Hello, World!");
-
-}
-
-
-```
+    }
 
 That's an awful lot of symbolic syntax.
 
@@ -41,7 +36,7 @@ Let's try and get rid of a little of that.
 
 ## Format
 
-Format specifiers are incredibly useful in C. Allowing you to specify how many decimal places to put after a float, where to use commas when outputting numbers. Whether to use the locale specifier to get the right ```,``` or ```.``` syntax, etc.
+Format specifiers are incredibly useful in C. Allowing you to specify how many decimal places to put after a float, where to use commas when outputting numbers. Whether to use the locale specifier to get the right `,` or `.` syntax, etc.
 
 But, for the general case, we don't need it. So we can make it disappear.
 
@@ -54,13 +49,12 @@ If we define `display_format` as a `_Generic` switch, like you can see in `evil_
 
 Now we can rewrite our program like this:
 
-```C
-#include "evil.h"
+    #include "evil.h"
 
-int main(int argc, char* argv[]) {
-	displayln("Hello, World!");
-}
-```
+    int main(int argc, char* argv[]) {
+    	displayln("Hello, World!");
+    }
+
 
 There. That's a lot more high level. And it works correctly for a whole bunch of things other than strings, too.
 
@@ -79,13 +73,11 @@ Unfortunately, just defining our `Main` isn't enough. We need a couple more defi
 
 Now. That's better. We can now rewrite our program:
 
-```C
-#include "evil.h"
+    #include "evil.h"
 
-Main then
-  displayln("Hello, World!");
-end
-```
+    Main then
+      displayln("Hello, World!");
+    end
 
 Brilliant. Now it doesn't look like C. It still compiles like C. In fact, it should compile without warnings.
 
@@ -107,19 +99,17 @@ With a GNU-extension (it may or may not work under other compilers), we can easi
 
 There! Simple, isn't it? Well, maybe not entirely obvious how it works. (See `evil_lambda.h` for our full implementation.)
 
-```C
-#define EVIL_LAMBDA
-#include "evil.h"
+    #define EVIL_LAMBDA
+    #include "evil.h"
 
-Main then
-  int (*max)(int, int) = lambda(int,
-  	                         (int x, int y) {
-  	                         	return x > y ? x : y;
-  	                         });
+    Main then
+      int (*max)(int, int) = lambda(int,
+      	                         (int x, int y) {
+      	                         	return x > y ? x : y;
+      	                         });
 
-  displayln(max(1, 2));
-end
-```
+      displayln(max(1, 2));
+    end
 
 We create a function pointer called max, which returns an int, and takes two int arguments. The lambda assigned to it matches. It returns the bigger of the two values with a simple one-liner.
 
@@ -133,42 +123,38 @@ But we're doing the wrong thing.
 
 So, apart from emitting some compile-time warnings, the crux of `evil_coroutine.h` is this magnificent madness:
 
-```C
-// Original macro hack by Robert Elder (c) 2016. Used against their advice, but with their permission.
-#define coroutine() static int state=0; switch(state) { case 0:
-#define co_return(x) { state=__LINE__; return x; case __LINE__:; }
-#define co_end() }
-```
+    // Original macro hack by Robert Elder (c) 2016. Used against their advice, but with their permission.
+    #define coroutine() static int state=0; switch(state) { case 0:
+    #define co_return(x) { state=__LINE__; return x; case __LINE__:; }
+    #define co_end() }
 
 By storing state and using a switch as a computer `GOTO`, you can now write functions that appear to be resumeable.
 
 Like so:
 
-```C
-#define EVIL_COROUTINE
-#include "evil.h"
+    #define EVIL_COROUTINE
+    #include "evil.h"
 
-int example() {
-  static int i = 0;
-  coroutine();
-  While true then
-    co_return(++i);
-  end
-  co_end();
-  return i;
-}
+    int example() {
+      static int i = 0;
+      coroutine();
+      While true then
+        co_return(++i);
+      end
+      co_end();
+      return i;
+    }
 
-Main then
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-end
-```
+    Main then
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+    end
 
 Despite being dangerous, and poorly thought through if you're insane enough to put this anywhere near production code, we are looking like we have coroutines.
 
@@ -180,10 +166,9 @@ Technically speaking, C doesn't have functions. Because functions are pure and h
 
 What C has, is properly known as `procedures`. So let's reflect that when we redefine how we make them, to get ride of the braces:
 
-```C
-#define declare(_name, _ret, ...) _ret _name(__VA_ARGS__)
-#define proc(_name, _ret, ...) _ret _name(__VA_ARGS__){
-```
+    #define declare(_name, _ret, ...) _ret _name(__VA_ARGS__)
+    #define proc(_name, _ret, ...) _ret _name(__VA_ARGS__){
+
 
 This fits in nicely with our existing `then` and `end` macros.
 
@@ -191,34 +176,32 @@ We put the return type right before any listing of arguments, and after the name
 
 It let's us change the above example into this marvelous little beauty:
 
-```C
-#define EVIL_COROUTINE
-#include "evil.h"
+    #define EVIL_COROUTINE
+    #include "evil.h"
 
-declare(example, int);
+    declare(example, int);
 
-proc(example, int)
-  static int i = 0;
-  coroutine();
-  While true then
-    co_return(++i);
-  end
-  co_end();
-  return i;
-end
+    proc(example, int)
+      static int i = 0;
+      coroutine();
+      While true then
+        co_return(++i);
+      end
+      co_end();
+      return i;
+    end
 
-Main then
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-  displayln(example());
-end
+    Main then
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+      displayln(example());
+    end
 
-```
 
 That's better. It looks more consistent with the rest of our syntax, whilst still not breaking how C works at all.
 
