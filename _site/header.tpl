@@ -1,4 +1,5 @@
 <!doctype html>
+<html lang="en-AU">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -34,6 +35,30 @@
 <meta name="rating" content="General">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="{{config.description or ''}}">
+
+<meta name="robots" content="index,follow">
+<meta name="googlebot" content="index,follow">
+
+{% if config.host then %}
+<link rel="author" href="{{config.host}}">
+{% end %}
+
+{% if title then %}
+<meta itemprop="name" content="{{title}}">
+{% else %}
+<meta itemprop="name" content="{{ config.site_name or ''}}">
+{% end %}
+
+{% if description then %}
+<meta name="description" itemprop="description" content="{{description}}">
+{% else %}
+<meta name="description" itemprop="description" content="{{config.description or ''}}">
+{% end %}
+
+{%
+	-- Prevent UC browser from fucking over the font sizes...
+%}
+<meta name="wap-font-scale" content="no">
 </head>
 <body>
 

@@ -49,4 +49,8 @@
 <li><a href="{{(base_url or '/') .. 'all.html'}}" title="All Posts">All Posts</a></li>
 <li><a href="{{(base_url or '/') .. 'feed.xml'}}" title="RSS Feed">RSS Feed</a></li>
 </ul>
+
+{% if config.copyright then %}
+<small>&copy; {{date("%Y")}} All Rights Reserved, {{config.copyright}}</small>
+{% end %}
 </footer>
