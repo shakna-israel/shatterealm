@@ -9,6 +9,19 @@
 <title>{{ config.site_name or ''}}</title>
 {% end %}
 
+<meta http-equiv="x-ua-compatible" content="ie=edge">
+<meta http-equiv="Referrer-Policy" content="no-referrer">
+<meta http-equiv="Cache-Control" content="public, max-age=604800, no-cache, immutable">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="deny">
+<meta http-equiv="X-XSS-Protection" content="1; mode=block">
+
+<meta http-equiv="Strict-Transport-Security" content="max-age=15768000; preload">
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+<meta http-equiv="X-Content-Security-Policy" content="default-src 'self'">
+<meta http-equiv="X-WebKit-CSP" content="default-src 'self'">
+
 <link rel="stylesheet" href="{{(base_url or '/') .. 'styles.css'}}" />
 <link rel="alternate" type="application/rss+xml" title="{{ (config.site_name or '') .. ' RSS'}}" href="{{(base_url or '/') .. 'feed.xml'}}"/>
 
