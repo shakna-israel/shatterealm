@@ -1,0 +1,154 @@
+{%
+	subtitle = 'The Falacies of Family Trees'
+	value = [[
+Recently, I attempt to create a family tree for a mythological family. I did expect to hit some problems, because some parts of the family tree aren't possible in the real world.
+
+To demonstrate it trivially, this is the basic tree I wanted to render:
+
+* Dawn gave birth to Dawn
+
+* Dawn gave birth to Dyeus
+
+* Dawn & Dyeus gave birth to Mres
+
+* Dyeus & Dionne gave birth to Alcides
+
+* Dawn & Alcides have three sons
+
+* Alcides' second son and Mres gave birth to Artimus
+
+* Dyeus & Artimus gave birth to Aides
+
+First up: Dawn's birth is recursive. It's impossible so expecting to model that was out.
+
+However, I soon discovered that the industry is worse than not being able to model the impossible, and can't even model the _historical_.
+
+Almost all genealogy software uses a standard called [GEDCOM](https://www.gedcom.org/).
+
+For inexplicable reasons, GEDCOM cannot model these things that were (unfortunately, in the first couple cases) common in human history:
+
+* You cannot be both a _spouse_ and a _child_ of the same person.
+
+* You cannot be both a _spouse_ and an _ancestor_ of the same person.
+
+* You _must_ have a family name or surname. (Oh look, you must be a Klingon, Son of None).
+
+* You cannot have a gender other than _male_ or _female_.
+
+* You're not a husband or wife? But you are a spouse? Tough luck. There's no term for that. Good luck modelling polygamy.
+
+Beyond that, the GEDCOM format is so damn ugly and badly thought out that extending it to cover the real world isn't really possible.
+
+Just take a look at modelling a same-sex spousal relationship (header data excluded):
+
+	0 @I1@ INDI
+	1 NAME John /Smith/
+	2 SURN Smith
+	2 GIVN John
+	1 SEX M
+	1 BIRT
+	2 DATE 1 Sep 1991
+	2 PLAC Philadelphia, Philadelphia, Pennsylvania, United States of America
+	1 FAMS @F1@
+	0 @I2@ INDI
+	1 NAME Steven /Stevens/
+	2 SURN Stevens
+	2 GIVN Steven
+	1 SEX M
+	1 BIRT
+	2 DATE 8 Aug 1988
+	2 PLAC Seattle, King, Washington, United States of America
+	1 FAMS @F1@
+	0 @F1@ FAM
+	1 HUSB @I1@
+	1 WIFE @I2@
+	1 MARR
+	2 DATE 26 Jun 2015
+	2 PLAC Portland, Mutnomah, Oregon, United States of America
+	0 TRLR
+
+Firstly: This format looks awful. It isn't easy for a human to parse, and it isn't actually that great for a machine to parse, either.
+
+Secondly: It's a same sex relationship, but you must arbitrarily make one of them have a title of "husband", and the other "wife". Two husbands? Nah, that's ridiculous. What about other historical titles? Like "mistress"? Sorry, Madame de Pompadour your official relationship isn't allowed.
+
+So, let's completely give up on an industry that has somehow decided that GEDCOM is the best you can do, and create our own format, and renderer to go with it.
+
+The code I'll be exploring I put together as a new project called [shakna/genes](https://git.sr.ht/~shakna/genes), and have released under a CC0 license, because the industry really should do better than it currently is.
+
+Python has a pretty good interface into [graphviz](https://graphviz.org/), in the `graphviz` package. This means that rendering trees _should_ be pretty easy, so long as we make it so we have all the data we need in a single pass. If we need to go beyond that, things will get extremely hectic, extremely quickly.
+
+Sidenote: The [DOT](https://www.graphviz.org/doc/info/lang.html) language that graphviz uses under the covers is an example of a decent standard for operating on tree data. It's way more than we need for this project, but GEDCOM could learn a few things about modelling relationships from them.
+
+For the most part, to model our data, we need a series of statements from the user of either of these forms:
+
+	{"Name A": "Dyeus", "Metadata": {"Gender": "Male"}}
+	{"Name A": "Dawn", "Name B": "Dyeus", "Relation": "Spouse"}
+
+That way we can:
+
+* Add arbitrary metadata
+
+* Add arbitrary relationships.
+
+You do face the problem of people with the same names, but I hacked around that by letting you add a colon and arbtirary text as a specific identifier:
+
+	{"Name A": "Dawn:10", "Name B": "Dyeus", "Relation": "Spouse"}
+
+However, this kind of JSON-ish data isn't fun to work with, and isn't that well suited to tabular data like CSV or anything like that. But the relational tree I built with it did look a lot like the kinds of trees I was used to getting when dumping with Datalog, so I used Prolog as an inspiration, and came up with this format:
+
+	# This is a comment!
+	"Dawn" is the Spouse of "Dyeus"
+	"Dawn" is the Parent of "Dawn"
+	"Dawn" is the Parent of "Dyeus"
+	"Dawn" is the Parent of "Mres"
+	"Dawn" has a Gender of "Female"
+
+	"Dyeus" is the Parent of "Mres"
+	"Dyeus" is the Parent of "Alcides"
+	"Dyeus" has a Gender of "Male"
+
+	"Mres" has a Gender of "Male"
+
+	"Dionne" is the Parent of "Alcides"
+	"Dionne" has a Gender of "Female"
+	"Alcides" has a Gender of "Male"
+
+	"Unknown:1" is the Child of "Dawn"
+	"Unknown:1" is the Child of "Alcides"
+	"Unknown:1" is the Spouse of "Mres"
+	"Unknown:1" has a Gender of "Male"
+
+	"Artimus" is the Child of "Unknown:1"
+	"Artimus" is the Child of "Mres"
+	"Artimus" has a Gender of "Female"
+
+	"Artimus" is the Parent of "Aides"
+	"Aides" has a Gender of "Male"
+
+This has the benefit of modelling _everything_ that was in our original tree, whilst remaining entirely flexible. It's easy to read, meaning it is also easy to edit.
+
+Basically lines beginning with `#` are comments, so easy to ignore.
+
+Then the line is of either of these forms:
+
+* `<name> is the <relationship> of <name>`
+
+* `<name> has a <attribute> of <value>`
+
+* The line is tokenised using POSIX shell rules, so I can use Python's inbuilt `shlex` module and not have to try and parse quotes.
+
+This is extensible, human-readable, and flexible. You're not rail-roaded into any preconceived notion by the format. The renderer might end up with certain assumptions, but it easier to extend a renderer, than it is to extend a format.
+
+In our case, the render looks like:
+
+![Mythological Tree](/images/falacies.png)
+
+The entire thing, including the parser (and error checking) for the format, and the data munger to put everything into a single-pass structure so we can render easily with `graphviz`, is a piddling 262 lines of code.
+
+It isn't the prettiest code in the world, but it should be easy to extend as I discover more assumptions that would be plain impossible to model in GEDCOM.
+
+Whilst I haven't built a GUI for this, looking at a GUI, versus the simple statements in our format, it is clear to me which I would rather use when spelling out the massive number of complicated relationships that can arise in a genealogy.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
