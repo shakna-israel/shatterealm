@@ -15,13 +15,23 @@
 	local date_section = v.sortname:sub(1, last_num)
 	local word_section = v.sortname:sub(last_num + 1)
 
+	if v.subtitle then
+		word_section = v.subtitle
+	end
+
 	date_section = date_section:gsub(" ", "-")
 
 	local name = word_section .. ' [' .. v.directory .. ']' .. ' (' .. date_section .. ')'
 %}
 <a href="{{v.path}}">{{name}}</a>
 {% else %}
+
+{% if v.subtitle then %}
+<a href="{{v.path}}">{{v.subtitle}}</a>
+{% else %}
 <a href="{{v.path}}">{{v.name}}</a>
+{% end %}
+
 {% end %}
 
 {% if v.description then %}
@@ -59,6 +69,10 @@
 		local last_num = v.sortname:match('^.*()%d')
 		local date_section = v.sortname:sub(1, last_num)
 		local word_section = v.sortname:sub(last_num + 1)
+
+		if v.subtitle then
+			word_section = v.subtitle
+		end
 
 		date_section = date_section:gsub(" ", "-")
 
