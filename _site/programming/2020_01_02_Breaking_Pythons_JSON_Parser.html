@@ -1,0 +1,65 @@
+{%
+	subtitle = "Breaking Python's JSON Parser"
+	value = [[
+Python's JSON Parser isn't particularly robust. This is well known, and what this post explores isn't going to come as news to a lot of Python programmers. It may be to some, but that's not the point.
+
+The point is that it is _embarassingly_ bad.
+
+If you go to the [documentation page](https://docs.python.org/3/library/json.html), and search for "RecursionError", and you will find 0 references.
+
+If you go to [`json.loads`](https://docs.python.org/3/library/json.html#json.loads), in particular, you'll find the text:
+
+> Deserialize s (a str, bytes or bytearray instance containing a JSON document) to a Python object using this conversion table.
+
+> The other arguments have the same meaning as in load().
+
+> If the data being deserialized is not a valid JSON document, a JSONDecodeError will be raised.
+
+> Changed in version 3.6: s can now be of type bytes or bytearray. The input encoding should be UTF-8, UTF-16 or UTF-32.
+
+> Changed in version 3.9: The keyword argument encoding has been removed.
+
+Notably, the only error mentioned, is `JSONDecodeError`.
+
+So, you might reasonably expect that this function can only raise this error, or catostrophic errors like `MemoryError`.
+
+You would be dead wrong.
+
+Here's a very small bit of text:
+
+	[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[
+
+Depending on your system, if you try and toss that at Python, and load it as JSON, you _will_ hit `RecursionError`. Unexpectedly. Especially as there is no reason at all to believe that the above code is valid JSON. You would expect it to hand you a `JSONDecodeError`. You want it to. But it won't.
+
+In point of fact, it turns out to be ridiculously easy to create a script to create a minimal payload that will break Python's JSON loader:
+
+	#!/bin/sh
+
+	# Python will hit it's recursion limit
+	# If you supply just 4 less than the recursion limit
+	# I assume this means there's a few objects on the call stack first
+	# Probably: __main__, print, json.loads, and input.
+
+	n="$(python3 -c 'import math; import sys; sys.stdout.write(str(math.floor(sys.getrecursionlimit() - 4)))')"
+
+	echo "N: $n"
+
+	# Obviously invalid, but unparseable without matching pair
+	# JSON's grammar is... Not good at being partially parsed.
+	left="$(yes [ | head -n "$n" | tr -d '\n')"
+
+	# Rather than exploding with the expected decodeError
+	# This will explode with a RecursionError
+	echo "$left" | python3 -c 'import json; print(json.loads(input()))'
+
+On my particular platform, the reported `N` value to break Python's JSON is `996`. In the presence of a real program, with values already on the stack, that `N` will _decrease_.
+
+Python is regularly used on the server, and on the web, where this will show up, sooner or later.
+
+For example, if you look at [`requests`](https://github.com/psf/requests/blob/master/requests/models.py#L876), it just passes the exception on to the user from `request.json()`, where the user might reasonably be expected to catch a decoding error. But again, there's no mention that you can even hit a `RecursionError`.
+
+It seems that expecting Python to raise a `JSONDecodeError` for invalid JSON data is... Folly. Python cannot verify that the data actually matches the JSON specification at all.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}

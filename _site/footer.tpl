@@ -19,7 +19,7 @@
 {%
 	local last_num = v.sortname:match('^.*()%d')
 	local date_section = v.sortname:sub(1, last_num)
-	local word_section = v.sortname:sub(last_num + 1)
+	local word_section = v.title or v.subtitle or v.sortname:sub(last_num + 1)
 
 	date_section = date_section:gsub(" ", "-")
 
