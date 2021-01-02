@@ -1,0 +1,1307 @@
+{%
+	subtitle = 'Shiv - Let\'s Build a Version Control System!'
+	value = [[
+Just for fun, let's approach a task I had to actually do in the real world for political reasons not worth expending the energy to explain.
+
+Say you have some source code you'd like to track the changes of, but for some reason, you're banned from using any binary not already on the system, and the only binary available to you is [busybox](https://www.busybox.net/).
+
+At this point, you have two choices:
+
+1. Burst into tears at being unable to properly track changes, and start building time-stamped `tar` archives.
+
+2. Realise that `busybox` includes `diff` and `patch`, and you might be able to build _something_ using them. It'll never be performant or perfect, but it might be good enough.
+
+As the name of the system I ended up building implies, `shiv` is good enough to cut yourself. It isn't good enough for anything remotely reasonable and if you see someone using it... Run for the hills. Or ask if they'd like to be sectioned.
+
+If you actually use this thing, you are accepting the faults, the bugs, and the potential to be personally infected by the Black Plague, without regard for your own safety, and acknowledge that you are an absolute fool. As the old adage goes...
+
+***THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.***
+
+---
+
+### Code
+
+All the code discussed here should relate to [shiv75](https://git.sr.ht/~shakna/shiv75), and demonstrates the process used to create it. If you actually use this code in the real world - I hate you.
+
+---
+
+### Getting Started
+
+We know that we're going to somehow end up with a list of patchfiles, and probably some other metadata.
+
+So our first task, will be building somewhere we can put them. We don't know the exact architecture, but we'll start off pretty simply, and just build it out from there.
+
+	#!/bin/sh
+
+	set -ex
+
+	# Create a new repository
+	init_shiv() {
+		if [ -d '.shiv' ]; then
+			(>&2 echo 'Already a shiv repository.')
+			exit 1
+		fi
+
+		mkdir '.shiv'
+	}
+
+	# CLI parsing
+	if [ "$1" = 'init' ]; then
+		init_shiv
+		exit 0
+	else
+		(>&2 echo 'Unknown command.')
+		exit 1
+	fi
+
+This looks like a pretty good structure. We'll seperate the individual tasks out into functions, and then later on handle the command-parsing to call those functions. Which will make it easier to expand and re-architect the individual components.
+
+There's already a massive footgun here: For reasons known only to the almighty gods, `set -e` that usually causes an exit on a failed command, doesn't work that way inside functions. So... We'll have to re-architect.
+
+Thankfully, `set -x` which prints what is going on under the hood works pretty much the same way everywhere.
+
+	#!/bin/sh
+
+	set -ex
+
+	shiv_bin="$(realpath "$0")"
+
+	# Init a new repository
+	if [ "$1" = '_init' ]; then
+		if [ -d '.shiv' ]; then
+			(>&2 echo 'Already a shiv repository.')
+			exit 1
+		fi
+
+		mkdir '.shiv'
+
+		# TODO: Form a tree of folders...
+
+		exit 0
+	fi
+
+	# CLI parsing
+	if [ "$1" = 'init' ]; then
+		"$shiv_bin" '_init'
+		exit 0
+	else
+		(>&2 echo 'Unknown command.')
+		exit 1
+	fi
+
+At first glance, this seems kinda superfluous to have internals exposed as `_*`. However, we're going to have a few of these, and we do not want to have to check the exit status of every single builtin or function. It's fragile, but we are running a shell script for versioning, so we have already taken leave of our senses.
+
+One thing to be careful with: We're basically forking for every subcommand, so it should _also_ have an `exit` command, so it doesn't fall down into CLI parsing.
+
+The next task we'll need is to be able to _find_ the `.shiv` repository. It isn't good enough to just check if it's in the current working directory. We want to also check the folders above us.
+
+	# Find the shiv repository
+	if [ "$1" = '_find_shiv' ]; then
+		# Search upward to sysroot.
+		dir="$(pwd)"
+		while [ ! -d "$dir"/.shiv ] && [ "$dir" != '/' ]; do
+			dir="$(dirname "$dir")"
+		done
+		
+		# If we found something, emit it.
+		if [ -d "$dir"/.shiv ]; then
+			echo "$dir"
+			exit 0
+		else
+			exit 1
+		fi
+	fi
+
+This is probably the most important command available to us, and will be used extensively, everywhere. Controlling the exit status will let us use it in `if` statements. We're not doing anything really surprising here, we're just recursing upwards until we find it or hit the root directory.
+
+Now, we can rewrite our init function to use it, and work more correctly:
+
+	# Init a new repository
+	if [ "$1" = '_init' ]; then
+		if "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Already a shiv repository.')
+			exit 1
+		fi
+
+		mkdir '.shiv'
+
+		# TODO: Form a tree of folders...
+
+		exit 0
+	fi
+
+You may or may not want to do this. It depends. However, for our purposes, we don't want to support sub-repositories, so we simply ban them from existing. Remember, we're already dealing with a highly arbitrary constraint, we don't want to upset the Powers That Be.
+
+### Structure
+
+We've already made one structural decision - no subrepositories.
+
+We need to pencil out a few more decisions before we can finish up our `init` command. (Nothing is permanent, of course. This is an inhouse project that isn't deployed yet. You can continually change it until it goes into production.)
+
+1. We want branches - branches will be a list of commits. Probably flat files, then.
+
+	* We'll want to include some minimal data, like time of commit, to make merges less psychotic later on. They'll still be messy and probably break, but at least they will kinda work.
+
+	* Probably something like a list of: `(commit_id)|(UTC UNIX Epoch Timestamp)`
+
+2. We want commits to have metadata. We'll need to invent a format to store the bits we want:
+
+	* A list of filenames and patches
+
+	* A list of file times to reflect when they were last updated
+
+	* A list of file permissions
+
+	* A commit message
+
+	* Probably something like a procedural command interface, like: `PATCH:(base64 filename)|(patch_id)` and `TOUCH:(base64 filename)|(UTC UNIX Epoch Timestamp)`
+
+3. We want to store patches somewhere. (And breaking them out of a commit means we can re-use existing patches if they're identical!)
+
+4. We'll need to track the files we intend to commit, before we commit them. Probably just a list of filenames in a file, then.
+
+5. We'll need to track our currently-checked-out branch.
+
+With that in mind, we end up with something like:
+
+	# Init a new repository
+	if [ "$1" = '_init' ]; then
+		if "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Already a shiv repository.')
+			exit 1
+		fi
+
+		# Our main repository location
+		mkdir '.shiv'
+
+		# Where we'll store our branch files
+		mkdir '.shiv/branches'
+
+		# The default branch file
+		touch '.shiv/branches/master'
+
+		# Where we'll store our commits
+		mkdir '.shiv/commits'
+
+		# Where we'll store our patches
+		mkdir '.shiv/patches'
+
+		# Where we'll track what we want to commit
+		touch '.shiv/staging'
+
+		# Tell shiv we're on the master branch
+		echo 'master' > '.shiv/current'
+
+		exit 0
+	fi
+
+Which generates this structure:
+
+	.shiv (D)
+	├── branches (D)
+	│   └── master (F)
+	├── commits (D)
+	├── current (F)
+	├── patches (D)
+	└── staging (F)
+
+### Staging
+
+The obvious next step, and a ridiculously easy one, is to tell `shiv` what files we want to stage for commit.
+
+	if [ "$1" = '_stage_file' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		# Rewrite the path to be relative to our repository root.
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+		file="$2"
+		path='./'"$(realpath --relative-to="$shiv_root" "$file")"
+
+		# TODO: Add the path to staging...
+
+		exit 0
+	fi
+
+It is at this point you realise this is not as ridiculously easy as it seems. Because the `--relative-to` flag is a GNU extension, and we only have access to `busybox`.
+
+We're going to have to find a way to rewrite a path relative to the root for it to be useful to us at all.
+
+The short answer is that this is a fiddly process, but one that others have approached before, thankfully. So we can add these two functions to duplicate most of the functionality, and it should work for us. Most of the time.
+
+	# Get a path relative to another...
+	relPath () {
+	    local common path up
+	    common=${1%/} path=${2%/}/
+	    while test "${path#"$common"/}" = "$path"; do
+	        common=${common%/*} up=../$up
+	    done
+	    path=$up${path#"$common"/}; path=${path%/}; printf %s "${path:-.}"
+	}
+	# Readlink requires the file actually exist with the -f flag, but we don't
+	# have much of a choice.
+	relpath () { relPath "$(readlink -f "$1")" "$(readlink -f "$2")"; }
+
+Now that is out of the way, we can actually go about staging the file path:
+
+	# Stage a file
+	if [ "$1" = '_stage_file' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		# Rewrite the path to be relative to our repository root.
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+		file="$2"
+		path='./'"$(relpath "$shiv_root" "$file")"
+
+		# Encode the pathname
+		enc_path="$(echo "$path" | base64 | tr -d '\n')"
+
+		# Push the file name
+		echo "$enc_path" >> "$shiv_root"/.shiv/staging
+
+		# De-duplicate staging
+		staging_data="$(sort .shiv/staging | uniq)"
+		echo "$staging_data" > "$shiv_root"/.shiv/staging
+
+		exit 0
+	fi
+
+We encode the name to prevent any characters in the file path from screwing anything up, and de-duplicate the staging file because we intend to iterate over it later.
+
+Finally, we need to add some CLI parsing to make it so we can add files:
+
+	# CLI parsing
+	if [ "$1" = 'init' ]; then
+		"$shiv_bin" '_init'
+		exit 0
+	elif [ "$1" = 'add' ]; then
+		shift # get rid of the 'add'
+		for i in "$@"; do
+			"$shiv_bin" '_stage_file' "$i"
+		done
+		exit 0
+	else
+		(>&2 echo 'Unknown command.')
+		exit 1
+	fi
+
+This means we can run a command like `sh shiv add file_a file_b file_c` and stage them all at once.
+
+### Commit
+
+Now we can stage files, we need to be able to build a commit. This might just be the most important part of the process,
+
+	# Commit
+	if [ "$1" = '_commit' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		cwd="$(pwd)"
+		cd "$shiv_root"
+		while read -r line; do
+			filename="$(echo "$line" | base64 -d)"
+
+			# TODO: Rebuild last version of file
+			# TODO: Get diff of new version and save to patches
+			# TODO: Add to our commit data
+		done < "$shiv_root"/.shiv/staging
+		cd "$cwd"
+
+		exit 0
+	fi
+
+This is when things start to get a little mind-bending, and you need to keep the entire inner workings of `shiv` in your head. So if you suffer from chronic fatigue, like myself, expect it to take you a while to succeed.
+
+To generate a new commit, such as our _initial_ commit, we first need the plumbing to rebuild files from _previous_ commits.
+
+However, we can assemble everything except our diff without that, which will help us know exactly how we're going to structure our commit files, so let's do that instead...
+
+	# Commit
+	if [ "$1" = '_commit' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		commit_message="$2"
+		if [ -z "$commit_message" ]; then
+			# NOTE: Equivalent to "I'm an asshole."
+			# But that message failed to clear management,
+			# who insisted approving empty messages without
+			# a flag.
+			commit_message="No commit message."
+		fi
+		enc_message="$(echo "$commit_message" | base64 | tr -d '\n')"
+		now="$(date '+%s')"
+		echo "DATE|$now" >> "$commit_file"
+
+		commit_file="$(mktemp)"
+		echo "MESSAGE|$enc_message" > "$commit_file"
+		now="$(date '+%s')"
+		echo "DATE|$now" >> "$commit_file"
+
+		cwd="$(pwd)"
+		cd "$shiv_root"
+		while read -r line; do
+			filename="$(echo "$line" | base64 -d)"
+			# TODO: Rebuild last version of file
+			# TODO: Get diff of new version and save to patches
+			# TODO: Add to our commit data
+
+			# File has been deleted!
+			if [ ! -e  "$shiv_root"/"$filename" ]; then
+				echo "DELETE|$line" >> "$commit_file"
+			else
+				# Other file metadata...
+
+				# Get the file permissions
+				permissions="$(stat -c '%a' "$shiv_root"/"$filename")"
+				echo "CHMOD|$line|$permissions" >> "$commit_file"
+
+				# Get the user who modified it
+				user="$(stat -c '%U' "$shiv_root"/"$filename")"
+				# Get some kind of unique identifier...
+				identifier="$(ifconfig -a | grep HWaddr | sha256sum | cut -d ' ' -f1 | rev | cut -c -15 | rev)"
+				# Encode username@identifier
+				enc_user="$(echo "$user"@"$identifier" | base64 | tr -d '\n')"
+				# Who was responsible for this commit?
+				echo "BLAME|$line|$enc_user" >> "$commit_file"
+
+				# Get the last file modified time (must come last)
+				last_update="$(stat -c '%Y' "$shiv_root"/"$filename")"
+				echo "TOUCH|$line|$last_update" >> "$commit_file"
+			fi
+
+		done < "$shiv_root"/.shiv/staging
+		cd "$cwd"
+
+		# TODO: Put the commit file in the right place with mv instead
+		rm "$commit_file"
+
+		# TODO: Add commit_id to branch file
+
+		exit 0
+	fi
+
+Wow. That function is getting sizeable. Let's look at it in chunks...
+
+	commit_message="$2"
+	if [ -z "$commit_message" ]; then
+		# NOTE: Equivalent to "I'm an asshole."
+		# But that message failed to clear management,
+		# who insisted approving empty messages without
+		# a flag.
+		commit_message="No commit message."
+	fi
+	enc_message="$(echo "$commit_message" | base64 | tr -d '\n')"
+
+	commit_file="$(mktemp)"
+	echo "MESSAGE|$enc_message" > "$commit_file"
+	now="$(date '+%s')"
+	echo "DATE|$now" >> "$commit_file"
+
+We've added the ability to have messages to the commit. This, surprisingly, turned out to be a hugely controversial part of implementing `shiv`. Hopefully you're in a less politically charged environment when you're building your own version.
+
+The long and short of it: I was required to allow empty commit messages without requiring a flag, and with no snark for when people inevitably have to look at the log and twitch at all the empty commits that they now have to look through to see if it broke something for them personally.
+
+	# File has been deleted!
+	if [ ! -e  "$shiv_root"/"$filename" ]; then
+		echo "DELETE|$line" >> "$commit_file"
+	else
+		...
+	fi
+
+Files get created and destroyed. That's a thing that happens. If a file is staged, but doesn't exist, we want to tell the version control it got deleted, to make it easier on ourselves.
+
+	# Get the file permissions
+	permissions="$(stat -c '%a' "$shiv_root"/"$filename")"
+	echo "CHMOD|$line|$permissions" >> "$commit_file"
+
+We want to store file permissions in the version control. So that the script you want to be an executable still knows that it is an executable, and so on. Thankfully, `stat` makes that easy.
+
+	# Get the user who modified it
+	user="$(stat -c '%U' "$shiv_root"/"$filename")"
+	# Get some kind of unique identifier...
+	identifier="$(ifconfig -a | grep HWaddr | awk '{print $NF}' | sha256sum | cut -d ' ' -f1 | rev | cut -c -15 | rev)"
+	# Encode username@identifier
+	enc_user="$(echo "$user"@"$identifier" | base64 | tr -d '\n')"
+	# Who was responsible for this commit?
+	echo "BLAME|$line|$enc_user" >> "$commit_file"
+
+Unlike `git`, `shiv` doesn't have usernames or other identifiers. Mostly because we could rely on usernames at the time. But in the context of the everyday, this creates a pseudo-anonymous identifier. Enough that you can work out who to blame if you know enough about the project, but not enough for a random person looking at the repository to doxx them. Hopefully.
+
+Note: We're using `busybox` so we have an `ifconfig`. You... Might not. In which case, you can replace the identifier line with:
+
+	defroute="$(ip route | head -n1 | awk '{for(i=1;i<=NF;i++)if($i=="dev")print $(i+1)}')"
+	identifier="$(ip link | grep -A1 "$defroute" | tail -n1 | awk '{print $2}')"
+
+It doesn't really matter how accurate this is. It's supposed to be a pseudo-anonymous identifier.
+
+	# Get the last file modified time (must come last)
+	last_update="$(stat -c '%Y' "$shiv_root"/"$filename")"
+	echo "TOUCH|$line|$last_update" >> "$commit_file"
+
+The last part of checking over every file is slightly race-condition sensitive. Because we're collecting the file modified time so that we can `touch` files to the correct modified time when recreating them later. Again, stat makes this easy. (Race condition? What if the file was updated whilst the commit was building?)
+
+Altogether, this means that our internal format for a commit file will now look something like:
+
+	MESSAGE|Tm8gY29tbWl0IG1lc3NhZ2UuCg==
+	DELETE|Li94Cg==
+	CHMOD|Li9zaGl2Cg==|755
+	BLAME|Li9zaGl2Cg==|am1pbG5lQDc3YzE4YmM5YjM1Y2NjYgo=
+	TOUCH|Li9zaGl2Cg==|1609554160
+
+(Hint: Go ahead and decode the `BLAME` if you want to look at my identifier. You won't get much.)
+
+Unfortunately, we're still missing something like:
+
+	PATCH|$FILENAME|$PATCH_ID
+
+For that, we'll need to add a brand new command, to get our current branch, so we can find the list of commits.
+
+	# Get current branch
+	if [ "$1" = '_current' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+		branch="$(cat "$shiv_root"/.shiv/current)"
+		echo "$branch"
+
+		exit 0
+	fi
+
+And whilst we're at it, we'll add that to the CLI interface, too.
+
+	# CLI parsing
+	if [ "$1" = 'init' ]; then
+		"$shiv_bin" '_init'
+		exit 0
+	elif [ "$1" = 'add' ]; then
+		shift # get rid of the 'add'
+		for i in "$@"; do
+			"$shiv_bin" '_stage_file' "$i"
+		done
+		exit 0
+	elif [ "$1" = 'current-branch' ]; then
+		if "$shiv_bin" '_current'; then
+			exit 0
+		else
+			exit 1
+		fi
+	else
+		(>&2 echo 'Unknown command.')
+		exit 1
+	fi
+
+We can now start putting together our checkout, so that we can compare files...
+
+	# Checkout
+	if [ "$1" = '_checkout' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		branch="$2"
+		directory="$3"
+
+		# TODO: Checkout branch into directory...
+	fi
+
+And checking out will take this kind of shape:
+
+	# Read each commit in order
+	while read -r commit_id; do
+		# Reach the commands of the commit
+		while read -r commit_command; do
+			...
+		done < "$shiv_root"/.shiv/commits/"$commit_id"
+	done < "$shiv_root"/.shiv/branches/"$branch"
+
+And it's at this point things are starting to get a little bit complicated, because of a little quirk. You can be thankful we're only futzing with the filesystem and don't need to change any variables or keep any state.
+
+_This kind_ of `while` loop happens inside a subshell. Not all whiles do, but this one always will.
+
+That's right! All your variables will go away each loop, and the parents will be copied to the next loop again, so you can't really modify them. It's fine for our purposes, but it's just one of the many footguns waiting to happen.
+
+Anyway... We'll loop over each command using an `if`, inside the inner `while` something like:
+
+	com="$(echo "$commit_command" | awk -F'|' '{print $1}')"
+
+	if [ "$com" = 'MESSAGE' ]; then
+		# No-op
+		:
+	elif [ "$com" = 'BLAME' ]; then
+		# No-op
+		:
+	elif [ "$com" = 'DATE' ]; then
+		# No-op
+		:
+	...
+	fi
+
+First up, `DELETE`, which is dead easy:
+
+	elif [ "$com" = 'DELETE' ]; then
+		# Remove the file
+		file="$(echo "$commit_command" | awk -F'|' '{print $2}' | base64 -d)"
+		# Only kill it if it exists...
+		if [ -e "$directory/$file" ]; then
+			rm "$directory/$file"
+		fi
+
+`CHMOD` is only slightly more complicated, in that the file may not exist yet, so we need to check. This should also demonstrate why we put `touch` last when assembling our commit file:
+
+	elif [ "$com" = 'CHMOD' ]; then
+		# Set the permissions
+
+		# Get the path and perms
+		file="$(echo "$commit_command" | awk -F'|' '{print $2}' | base64 -d)"
+		permissions="$(echo "$commit_command" | awk -F'|' '{print $3}')"
+
+		if [ ! -e "$directory/$file" ]; then
+			touch "$directory/$file"
+		fi
+
+		# Set the permission
+		chmod "$permissions" "$directory/$file"
+
+`TOUCH` is complicated by the fact that the expected format for POSIX `touch` dates is `[[CC]YY]MMDDhhmm[.ss]`.
+
+	elif [ "$com" = 'TOUCH' ]; then
+		# Set the modified date
+		file="$(echo "$commit_command" | awk -F'|' '{print $2}' | base64 -d)"
+		modtime="$(echo "$commit_command" | awk -F'|' '{print $3}')"
+
+		# Convert the epoch into the format that touch can handle...
+		extime="$(date -d "@$modtime" '+%C%y%m%d%H%M.%S')"
+
+		touch -mt "$extime" "$directory/$file"
+
+Finally, we arrive at a command we haven't actually implemented yet on the commit side of things, because we had to implement checking out. Yep, it's the inter-dependent `PATCH`!
+
+However, actually implementing it in checkout isn't difficult, we just need to remember the format we expect when we go back to commit to implement it later.
+
+	elif [ "$com" = 'PATCH' ]; then
+		# Apply a patch
+		file="$(echo "$commit_command" | awk -F'|' '{print $2}' | base64 -d)"
+		patch_id="$(echo "$commit_command" | awk -F'|' '{print $3}')"
+
+		if [ ! -e "$directory/$file" ]; then
+			touch "$directory/$file"
+		fi
+
+		patch "$directory/$file" "$shiv_root"/.shiv/patches/"$patch_id"
+
+GNU versions of `patch` include various resolution options like merging by fast-forward. POSIX doesn't, so we can't have the niceties. If something blows up, that'll be on the user to work out how to resolve.
+
+However, we can now checkout a branch into a directory!
+
+Which means we can go back to `_commit`, and begin implementing diffing to create our patches...
+
+	# Checkout the branch so we can diff it...
+	current_branch=$("$shiv_bin" '_current')
+	old_commit_dir="$(mktemp -d)"
+
+	"$shiv_bin" '_checkout' "$current_branch" "$old_commit_dir"
+
+Now, going back to `_commit` and inserting code _before_ we created all our metadata, we end up with...
+
+	cwd="$(pwd)"
+	cd "$shiv_root"
+	while read -r line; do
+		filename="$(echo "$line" | base64 -d)"
+
+		# Set a diffable path for the old file
+		if [ ! -e "$old_commit_dir"/"$filename" ]; then
+			oldpath='/dev/null'
+		else
+			oldpath="$old_commit_dir"/"$filename"
+		fi
+
+		# Set a diffable path for the maybe-changed file
+		if [ ! -e "$shiv_root"/"$filename" ]; then
+			newpath='/dev/null'
+		else
+			newpath="$shiv_root"/"$filename"
+		fi
+
+		# Create patchfile
+		patchfile="$(mktemp)"
+		set +e
+		diff "$oldpath" "$newpath" > "$patchfile"
+		set -e
+
+		# Check if an identical patch already exists (so we can re-use it)
+		patch_id_file="$(mktemp)"
+
+		find "$shiv_root"/.shiv/patches | while read -r line; do
+			if cmp --silent "$patchfile" "$line" -type f; then
+				basename "$line" > "$patch_id_file"
+				break
+			fi
+		done
+
+		# Get any patch that exists...
+		patch_id=$(head -n1 "$patch_id_file")
+		rm "$patch_id_file"
+
+		# Create our patching command...
+		if [ -z "$patch_id" ]; then
+			# New patch
+			patch_id="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 50)"
+			filepath="$(echo "$filename" | base64 | tr -d '\n')"
+
+			mv "$patchfile" "$shiv_root"/.shiv/patches/"$patch_id"
+
+			echo "PATCH|$filepath|$patch_id" >> "$commit_file"
+		else
+			# Old patch
+			filepath="$(echo "$filename" | base64 | tr -d '\n')"
+
+			echo "PATCH|$filepath|$patch_id" >> "$commit_file"
+		fi
+
+It isn't that complicated. It's just difficult to follow the exact flow of creating a commit in your head all at once. Committing relies on checking out, including during the first commit. It's counter-intuitive, but it works.
+
+Now that we've implemented `_commit`, we can add it to the CLI:
+
+	elif [ "$1" = 'commit' ]; then
+		"$shiv_bin" '_commit' "$2"
+		exit 0
+
+And whilst we're at it, we'll add a completely-destructive checkout for branches as well:
+
+	elif [ "$1" = 'checkout-branch' ]; then
+		"$shiv_bin" '_checkout' "$2" "$("$shiv_bin" '_find_shiv')"
+		exit 0
+
+The complete `_commit` function should now look something like:
+
+	# Commit
+	if [ "$1" = '_commit' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		# Checkout the branch so we can diff it...
+		current_branch=$("$shiv_bin" '_current')
+		old_commit_dir="$(mktemp -d)"
+
+		"$shiv_bin" '_checkout' "$current_branch" "$old_commit_dir"
+
+		commit_message="$2"
+		if [ -z "$commit_message" ]; then
+			# NOTE: Equivalent to "I'm an asshole."
+			# But that message failed to clear management,
+			# who insisted approving empty messages without
+			# a flag.
+			commit_message="No commit message."
+		fi
+		enc_message="$(echo "$commit_message" | base64 | tr -d '\n')"
+
+		commit_file="$(mktemp)"
+		echo "MESSAGE|$enc_message" > "$commit_file"
+		now="$(date '+%s')"
+		echo "DATE|$now" >> "$commit_file"
+
+		cwd="$(pwd)"
+		cd "$shiv_root"
+		while read -r line; do
+			filename="$(echo "$line" | base64 -d)"
+
+			# Set a diffable path for the old file
+			if [ ! -e "$old_commit_dir"/"$filename" ]; then
+				oldpath='/dev/null'
+			else
+				oldpath="$old_commit_dir"/"$filename"
+			fi
+
+			# Set a diffable path for the maybe-changed file
+			if [ ! -e "$shiv_root"/"$filename" ]; then
+				newpath='/dev/null'
+			else
+				newpath="$shiv_root"/"$filename"
+			fi
+
+			# Create patchfile
+			patchfile="$(mktemp)"
+			set +e
+			diff "$oldpath" "$newpath" > "$patchfile"
+			set -e
+
+			# Check if an identical patch already exists (so we can re-use it)
+			patch_id_file="$(mktemp)"
+
+			find "$shiv_root"/.shiv/patches | while read -r line; do
+				if cmp --silent "$patchfile" "$line" -type f; then
+					basename "$line" > "$patch_id_file"
+					break
+				fi
+			done
+
+			# Get any patch that exists...
+			patch_id=$(head -n1 "$patch_id_file")
+			rm "$patch_id_file"
+
+			# Create our patching command...
+			if [ -z "$patch_id" ]; then
+				# New patch
+				patch_id="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 50)"
+				filepath="$(echo "$filename" | base64 | tr -d '\n')"
+
+				mv "$patchfile" "$shiv_root"/.shiv/patches/"$patch_id"
+
+				echo "PATCH|$filepath|$patch_id" >> "$commit_file"
+			else
+				# Old patch
+				filepath="$(echo "$filename" | base64 | tr -d '\n')"
+
+				echo "PATCH|$filepath|$patch_id" >> "$commit_file"
+			fi
+
+			# File has been deleted!
+			if [ ! -e  "$shiv_root"/"$filename" ]; then
+				echo "DELETE|$line" >> "$commit_file"
+			else
+				# Other file metadata...
+
+				# Get the file permissions
+				permissions="$(stat -c '%a' "$shiv_root"/"$filename")"
+				echo "CHMOD|$line|$permissions" >> "$commit_file"
+
+				# Get the user who modified it
+				user="$(stat -c '%U' "$shiv_root"/"$filename")"
+				# Get some kind of unique identifier...
+				identifier="$(ifconfig -a | grep HWaddr | sha256sum | cut -d ' ' -f1 | rev | cut -c -15 | rev)"
+				# Encode username@identifier
+				enc_user="$(echo "$user"@"$identifier" | base64 | tr -d '\n')"
+				# Who was responsible for this commit?
+				echo "BLAME|$line|$enc_user" >> "$commit_file"
+
+				# Get the last file modified time (must come last)
+				last_update="$(stat -c '%Y' "$shiv_root"/"$filename")"
+				echo "TOUCH|$line|$last_update" >> "$commit_file"
+			fi
+
+		done < "$shiv_root"/.shiv/staging
+		cd "$cwd"
+
+		# Unique ID
+		commit_id="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 50)"
+
+		# Install the commit
+		mv "$commit_file" "$shiv_root"/.shiv/commits/"$commit_id"
+		echo "$commit_id" >> "$shiv_root"/.shiv/branches/"$current_branch"
+
+		# Cleanup
+		rm -rf "$old_commit_dir"
+
+		exit 0
+	fi
+
+### Checking out commits
+
+With the way we've architected things, commits are sort of floating, in that they don't have any concept of the history that came before them.
+
+So the concept of checking out a commit, like you can in many VCSs doesn't completely translate directly.
+
+However, implementing it isn't that difficult at all, though, `shiv` does it in a hack-y way, because the entirety of `shiv` is one great big damn hack. Which I may have mentioned once or twice.
+
+The basic idea is that you take the current branch, find where the wanted commit occurs in it, and copy up until that line into a temporary new branch, checkout that new branch. Merging and deleting the new branch should be up to the user. (And we haven't implemented those parts yet!)
+
+	# Checkout commit
+	if [ "$1" = '_checkout_commit' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		commit_id="$2"
+		directory="$3"
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+		current_branch=$("$shiv_bin" '_current')
+
+		found="$(mktemp)"
+		while read -r line; do
+			if [ "$line" = "$commit_id" ]; then
+				echo "$line" > "$found"
+				break
+			fi
+		done < "$shiv_root"/.shiv/branches/"$current_branch"
+
+		found_id="$(head -n1 "$found")"
+		rm "$found"
+		if [ -n "$found_id" ]; then
+			# We have a commit
+			# Get the line number we're stopping at
+			line_no="$(grep -n "^$found_id" "$shiv_root"/.shiv/branches/"$current_branch" | awk -F':' '{print $1}')"
+
+			# Get our data for our temporary branch
+			data="$(head -n"$line_no" "$shiv_root"/.shiv/branches/"$current_branch")"
+
+			# Create our temporary branch
+			tmp_branch_id="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 50)"
+			echo "$data" > "$shiv_root"/.shiv/branches/"$tmp_branch_id"
+
+			# Checkout our temporary branch
+			"$shiv_bin" '_checkout' "$tmp_branch_id" "$directory"
+			echo "$tmp_branch_id" > "$shiv_root"/.shiv/current
+		else
+			(>&2 echo 'Invalid commit supplied.')
+			exit 1
+		fi
+
+		exit 0
+	fi
+
+Again, the code is pretty straight forward. `grep` and `head` make it trivial to reconstruct a branch history up until the commit ID. Most of the code is just accounting for the user being wrong that such a commit exists in the current branch.
+
+And then we expose it in our CLI:
+
+	elif [ "$1" = 'checkout-commit' ]; then
+		"$shiv_bin" '_checkout_commit' "$2" "$("$shiv_bin" '_find_shiv')"
+		exit 0
+
+### New branches
+
+The ability to do checkouts is great. We can move back and forth in history, and add changes atop of that. However we're lacking a really obvious feature - the ability to create new branches!
+
+Well, with everything we've done, that's absolutely trivial.
+
+The basic concept is that you take an existing branch and... Copy it. That's it.
+
+	# Create a new branch
+	if [ "$1" = '_new_branch' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		oldbranch="$2"
+		newbranch="$3"
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		if [ ! -e "$shiv_root"/.shiv/branches/"$oldbranch" ]; then
+			(>&2 echo 'Old branch does not exist.')
+			exit 1
+		fi
+
+		if [ -e "$shiv_root"/.shiv/branches/"$newbranch" ]; then
+			(>&2 echo 'New branch already exists.')
+			exit 1
+		fi
+
+		cp "$shiv_root"/.shiv/branches/"$oldbranch" "$shiv_root"/.shiv/branches/"$newbranch"
+		exit 0
+	fi
+
+And we can expose two new CLI flags:
+
+	elif [ "$2" = 'branch-here' ]; then
+		"$shiv_bin" '_new_branch' "$("$shiv_bin" '_current')" "$3"
+		exit 0
+	elif [ "$3" = 'branch-new' ]; then
+		"$shiv_bin" '_new_branch' "$3" "$4"
+		exit 0
+
+This will allow us to branch from where we are in our current history, or create a new branch off an existing one.
+
+### Show log
+
+Because I don't want to look at merging branches yet, because that can get very icky, very quickly, let's instead look at constructing a half-decent log output. We've already done all the work for this in our commit files. It's just a case of iterating over them.
+
+# Display log information for a branch
+if [ "$1" = '_log_branch' ]; then
+	if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+		(>&2 echo 'Not a shiv repository.')
+		exit 1
+	fi
+
+	branch="$2"
+	shiv_root="$("$shiv_bin" '_find_shiv')"
+
+	if [ ! -e "$shiv_root"/.shiv/branches/"$branch" ]; then
+		(>&2 echo 'Branch does not exist.')
+		exit 1
+	fi
+
+	while read -r commit_id; do
+		echo "Commit: <$commit_id>"
+		while read -r commit_info; do
+
+			com="$(echo "$commit_info" | awk -F'|' '{print $1}')"
+
+			if [ "$com" = 'MESSAGE' ]; then
+				message="$(echo "$commit_info" | awk -F'|' '{print $2}' | base64 -d)"
+
+				echo "Message: $message"
+			elif [ "$com" = 'DATE' ]; then
+				datetime="$(echo "$commit_info" | awk -F'|' '{print $2}')"
+				convtime=$(date -d "@$datetime")
+
+				echo "DATE: $convtime"
+			elif [ "$com" = 'BLAME' ]; then
+				file_changed="$(echo "$commit_info" | awk -F'|' '{print $2}' | base64 -d)"
+				user="$(echo "$commit_info" | awk -F'|' '{print $3}' | base64 -d)"
+
+				echo "File Changed: <$file_changed>"
+				echo "By: <$user>"
+			elif [ "$com" = 'PATCH' ]; then
+				file_modded="$(echo "$commit_info" | awk -F'|' '{print $2}' | base64 -d)"
+				patch_id="$(echo "$commit_info" | awk -F'|' '{print $3}')"
+				patch_size="$(wc -l "$shiv_root"/.shiv/patches/"$patch_id" | awk '{print $1}')"
+
+				# Only if patch isn't empty
+				if [ $patch_size -gt 0 ]; then
+					# > (added)
+					set +e
+					lines_added="$(grep -nc '^>' "$shiv_root"/.shiv/patches/"$patch_id")"
+					set -e
+
+					# < (removed)
+					set +e
+					lines_removed="$(grep -nc '^<' "$shiv_root"/.shiv/patches/"$patch_id")"
+					set -e
+
+					echo "Diff: <$file_modded> +$lines_added -$lines_removed"
+				fi
+			fi
+
+		done < "$shiv_root"/.shiv/commits/"$commit_id"
+		echo ''
+	done < "$shiv_root"/.shiv/branches/"$branch"
+
+	exit 0
+fi
+
+Which will produce output something like:
+
+	Commit: <5KHcMoWXieayjXlCYCNzfERL1clEe6XCTvuX4Vu9bDSjj3ojto>
+	Message: Added ability to log files
+	DATE: Sat 02 Jan 2021 15:53:36 AEDT
+	Diff: <./shiv> +157 -2
+	File Changed: <./shiv>
+	By: <jmilne@77c18bc9b35cccb>
+
+	Commit: <KhyxlnKjBdCoNEVaPuKIEcVlju5DgrFY8OEj6e5GhJvvkrKhbb>
+	Message: No commit message.
+	DATE: Sat 02 Jan 2021 15:54:43 AEDT
+	Diff: <./shiv> +1 -1
+	File Changed: <./shiv>
+	By: <jmilne@77c18bc9b35cccb>
+
+File changes can be modified times as well as permissions, so may or may not get an associated `Diff` line, which is why we seem to report them twice.
+
+Now, we just need to expose it to the CLI:
+
+	elif [ "$1" = 'log' ]; then
+		if [ -n "$2" ]; then
+			"$shiv_bin" '_log_branch' "$2"
+		else
+			"$shiv_bin" '_log_branch' "$("$shiv_bin" '_current')"
+		fi
+		exit 0
+
+### Bug Fix: Directories
+
+Now, because I still _reeeeaally_ don't want to implement merging branches, we're going to take a look at a bug that exists in the above code.
+
+When checking out, if the file exists in a subdirectory of `$shiv_root` it'll fail to be created and everything will blow up in your face.
+
+Basically this code:
+
+	if [ ! -e "$directory/$file" ]; then
+		touch "$directory/$file"
+	fi
+
+Is woefully inadequate.
+
+Instead, we can do something like:
+
+	if [ ! -e "$directory/$file" ]; then
+
+		if [ ! "$(dirname "$directory/$file")" = "$shiv_root" ]; then
+			parent_dir="$(dirname "$directory/$file")"
+			if [ ! -d "$parent_dir" ]; then
+				mkdir -p "$parent_dir"
+			fi
+		fi
+
+		touch "$directory/$file"
+	fi
+
+This can still fail, if `mkdir -p` doesn't create the directory, but it'll fail correctly.
+
+You'll also need to add the inner check to the `TOUCH` command:
+
+	elif [ "$com" = 'TOUCH' ]; then
+		# Set the modified date
+		file="$(echo "$commit_command" | awk -F'|' '{print $2}' | base64 -d)"
+		modtime="$(echo "$commit_command" | awk -F'|' '{print $3}')"
+
+		# Convert the epoch into the format that touch can handle...
+		extime="$(date -d "@$modtime" '+%C%y%m%d%H%M.%S')"
+
+		# Create parent directory if it does not exist
+		if [ ! "$(dirname "$directory/$file")" = "$shiv_root" ]; then
+			parent_dir="$(dirname "$directory/$file")"
+			if [ ! -d "$parent_dir" ]; then
+				mkdir -p "$parent_dir"
+			fi
+		fi
+
+		# Set up the last modified time.
+		touch -mt "$extime" "$directory/$file"
+
+### Merging branches
+
+I can't put it off any longer. It's time we worked out how the hell we should merge branches.
+
+Firstly, because of the way we've structured commits, branch histories cannot be merged. Fullstop.
+
+Instead, we need to generate a commit which checks against a differing branch to our current branch, and then add a message to the log that this is where we merged the two histories.
+
+This is a bad way of merging, but without a proper way to do resolution, it's what we have.
+
+The easiest way to accomodate this is to modify our `_commit` command to allow us to commit against other branches than our current one.
+
+	# Checkout the branch so we can diff it...
+	if [ -z "$3" ]; then
+		current_branch=$("$shiv_bin" '_current')
+	else
+		current_branch="$3"
+	fi
+
+And then we need to also modify it to tell it where to place the new commit:
+
+	# Which branch gets the new commit
+	if [ -z "$4" ]; then
+		destination_branch="$current_branch"
+	else
+		destination_branch="$4"
+	fi
+
+	...
+
+	# Install the commit
+	mv "$commit_file" "$shiv_root"/.shiv/commits/"$commit_id"
+	echo "$commit_id" >> "$shiv_root"/.shiv/branches/"$destination_branch"
+
+Now, we have what we need to create a merge:
+
+	# "Merge" two branches
+	if [ "$1" = '_merge_branch' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		branch_a="$2"
+		branch_b="$3"
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		branch_b_latest=$(tail -n1 "$shiv_root"/.shiv/branches/"$branch_b")
+
+		"$shiv_bin" '_commit' "MERGE: <$branch_b@$branch_b_latest> into <$branch_a>" "$branch_b" "$branch_a"
+
+		exit 0
+	fi
+
+Note that we also add what commit the branch was at when we merged it, so that the user has a hope to be able to rebuild the history by trawling logs.
+
+And we can build the CLI interface for it:
+
+	elif [ "$1" = 'merge' ]; then
+		if [ -n "$3" ]; then
+			"$shiv_bin" '_merge_branch' "$("$shiv_bin" '_current')" "$2"
+		else
+			"$shiv_bin" '_merge_branch' "$3" "$2"
+		fi
+		exit 0
+
+Which means the user can do:
+
+	./shiv merge other_branch
+
+To merge the `other_branch` into our current branch.
+
+Or:
+
+	./shiv merge master other_branch
+
+To merge `other_branch` into the `master` branch.
+
+### List branches
+
+Listing branches is trivial, of course.
+
+	# List branches
+	if [ "$1" = '_ls_branches' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		ls -1t "$shiv_root"/.shiv/branches
+
+		exit 0
+	fi
+
+And for the CLI:
+
+	elif [ "$1" = 'ls-branches' ]; then
+		"$shiv_bin" '_ls_branches'
+		exit 0
+
+### Bug in Checking Out
+
+There is a serious bug in both of these:
+
+	elif [ "$1" = 'checkout-branch' ]; then
+		"$shiv_bin" '_checkout' "$2" "$("$shiv_bin" '_find_shiv')"
+		exit 0
+	elif [ "$1" = 'checkout-commit' ]; then
+		"$shiv_bin" '_checkout_commit' "$2" "$("$shiv_bin" '_find_shiv')"
+		exit 0
+
+Can you spot it?
+
+Most PATCH commands will start with the assumption that a file is empty, because of the way we reconstruct history.
+
+Instead of trying to checkout over our current directory, we need to checkout to a new directory, and then move the files over the top of our current ones.
+
+We can fix this rather easily:
+
+	elif [ "$1" = 'checkout-branch' ]; then
+
+		# Checkout
+		checkout_dir="$(mktemp -d)"
+		"$shiv_bin" '_checkout' "$2" "$checkout_dir"
+
+		# Transplant files
+		cp -rp "$checkout_dir" "$("$shiv_bin" '_find_shiv')"/
+
+		# Cleanup
+		rm -rf "$checkout_dir"
+
+		exit 0
+	elif [ "$1" = 'checkout-commit' ]; then
+		# Checkout
+		checkout_dir="$(mktemp -d)"
+		"$shiv_bin" '_checkout_commit' "$2" "$checkout_dir"
+
+		# Transplant files
+		cp -rp "$checkout_dir" "$("$shiv_bin" '_find_shiv')"/
+
+		# Cleanup
+		rm -rf "$checkout_dir"
+
+		exit 0
+
+### Bug in Commit
+
+There's also a pretty bad bug in `_commit`.
+
+And therefore also in anything that calls it, such as `_merge_branch`.
+
+It's the staging file. We never clear it after a commit. And when we merge, we never set it up.
+
+In `_commit` we want to do:
+
+	done < "$shiv_root"/.shiv/staging
+	cd "$cwd"
+
+	# Clear the staging file
+	rm "$shiv_root"/.shiv/staging
+	touch "$shiv_root"/.shiv/staging
+
+And then we need to re-write `_merge_branch` to create a staging file that replicates the files tracked by both branches:
+
+	# "Merge" two branches
+	if [ "$1" = '_merge_branch' ]; then
+		if ! "$shiv_bin" '_find_shiv' >/dev/null; then
+			(>&2 echo 'Not a shiv repository.')
+			exit 1
+		fi
+
+		branch_a="$2"
+		branch_b="$3"
+
+		shiv_root="$("$shiv_bin" '_find_shiv')"
+
+		branch_a_latest=$(tail -n1 "$shiv_root"/.shiv/branches/"$branch_a")
+		branch_b_latest=$(tail -n1 "$shiv_root"/.shiv/branches/"$branch_b")
+
+		merge_files="$(mktemp)"
+
+		# Get files tracked by branch_a
+		while read -r commit_id; do
+			while read -r line; do
+				com="$(echo "$line" | awk -F'|' '{print $1}')"
+
+				if [ "$com" = 'TOUCH' ]; then
+					file_enc="$(echo "$line" | awk -F'|' '{print $2}')"
+
+					echo "$file_enc" >> "$merge_files"
+				fi
+
+			done < "$shiv_root"/.shiv/commits/"$commit_id"
+		done < "$shiv_root"/.shiv/branches/"$branch_a"
+
+		# Get files tracked by branch_b
+		while read -r commit_id; do
+			while read -r line; do
+				com="$(echo "$line" | awk -F'|' '{print $1}')"
+
+				if [ "$com" = 'TOUCH' ]; then
+					file_enc="$(echo "$line" | awk -F'|' '{print $2}')"
+
+					echo "$file_enc" >> "$merge_files"
+				fi
+
+			done < "$shiv_root"/.shiv/commits/"$commit_id"
+		done < "$shiv_root"/.shiv/branches/"$branch_b"
+
+		# De-duplicate
+		files="$(sort "$merge_files" | uniq)"
+		echo "$files" > "$merge_files"
+
+		mv "$merge_files" "$shiv_root"/.shiv/staging
+
+		"$shiv_bin" '_commit' "MERGE: <$branch_b@$branch_b_latest> into <$branch_a@branch_a_latest>" "$branch_b" "$branch_a"
+
+		exit 0
+	fi
+
+### Wrapping Up
+
+At this point, `shiv` is fairly feature complete. There are some bugs out there which will cause it to eat your code. I know, because it happened every now and then. So we ended up using both `shiv`, and a cron-task to backup the repository into tar files. All because we weren't allowed to install anything on our mandated machines, like say... [Mercurial](https://www.mercurial-scm.org/) or [git](https://git-scm.com/). I am glad to be free of that.
+
+However, we did managed to throw together a VCS using just standard utilities in a weekend (it took me about a day to make the original), to save some amount of headaches. On that front, it worked.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
