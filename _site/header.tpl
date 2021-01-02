@@ -6,6 +6,8 @@
 
 {% if title then %}
 <title>{{ title }} | {{ config.site_name or ''}}</title>
+{% elseif subtitle then %}
+<title>{{ subtitle }} | {{ config.site_name or ''}}</title>
 {% else %}
 <title>{{ config.site_name or ''}}</title>
 {% end %}
@@ -45,6 +47,8 @@
 
 {% if title then %}
 <meta itemprop="name" content="{{title}}">
+{% elseif subtitle then %}
+<meta itemprop="name" content="{{subtitle}}">
 {% else %}
 <meta itemprop="name" content="{{ config.site_name or ''}}">
 {% end %}
