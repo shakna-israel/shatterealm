@@ -1,0 +1,31 @@
+{%
+	subtitle = 'Bookwriter 7 Release'
+	value = [[For some time now, I've been using a series of hacky layers around the standard [TeXInfo](https://www.gnu.org/software/texinfo/) pipeline to generate my book files for me.
+
+I like TeXInfo. It gives me just another formatting tools whilst generally staying out of my way, and makes doing tasks that sound simple, actually simple, unlike in LaTeX.
+
+However, my tool was... Well. Here's [bookwriter6](https://git.sr.ht/~shakna/bookwriter6).
+
+It has two other scripts as hidden payloads inside itself. One which is an INI parser in shell, (which I maintain [here](https://git.sr.ht/~shakna/minini/)), and the other converts straight double-quotes into the appropriate curled quote based as a Python script.
+
+This is obviously not ideal, especially for maintainence.
+
+Unfortunately, I wanted backwards compatibility. I have a number of books I've already written using the tool, like [XavLab](https://git.sr.ht/~shakna/XavLabTex), and there is no way in hell I'm rewriting anything in those to fit a new tool. A number of the books also include their own macros and so on.
+
+Thus, bookwriter languished for a while with bugs and undesirable behaviour like only being able to fetch the reading time if you do a new render.
+
+No more!
+
+The [new release](https://git.sr.ht/~shakna/bookwriter) is 100% backwards compatible, and written in Python. It should be more maintainable, though I'll admit writing TeX inside Python's template strings is an infuriating experience.
+
+As well as being backwards compatible, however, it is now also sports a few extensions, and the ability to be used as a library for more complicated build pipelines.
+
+I was able to drop-in replace the old version, including not breaking any of the hack-y wrapper scripts in some of the older versions of the books, whilst knowing that future versions aren't going to be held back by that behaviour anymore.
+
+There are differences - like a _much_ nicer default CSS, but I've never really made any guarantees about styling information and you can supply your own scripts to override that anyway.
+
+I also went out of my way to make use of `pathlib`, so it _might_ just be possible for someone to port bookwriter to Windows, which was practically an impossibility earlier.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
