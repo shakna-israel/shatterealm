@@ -1,0 +1,237 @@
+{%
+	subtitle = 'Damn Simple Lang'
+	value = [[You ever stop and look at what you've done and behold it with both horror and awe?
+
+That's precisely what this post is about.
+
+	{
+		"print": "Hello, World!",
+		"print": NaN,
+		"print": {
+			"add": [1, 2]
+		},
+		"print": {
+			"constant": "hello"
+		}
+	}
+
+The above snippet might be valid JSON, but that's incidental. What it is... Is the language that we are going to abuse Python's JSON parser to create an interpreter for.
+
+If you run the above program, you should get an output like:
+
+	> 'Hello, World!'
+
+	> Constant.NaN
+
+	> 3
+
+	> Constant.hello
+
+Parsing and evaluation are going to be done in a single run for us by Python's JSON parser, thanks to some of it's extended features. In short, our `evaluation` step of the language will look like this:
+
+	L = Lang()
+
+	with open("example.json", "r") as openFile:
+		json.load(openFile,
+			object_hook=L.decoder,
+			object_pairs_hook=L.decoder,
+			parse_float=L.parse_float,
+			parse_int=L.parse_int,
+			parse_constant=L.parse_constant)
+
+Which means that our `Lang` class will need to look something like:
+
+	class Lang(object):
+		def __init__(self):
+			# TODO
+			pass
+
+		def parse_float(self, value):
+			# TODO
+			return value
+
+		def parse_int(self, value):
+			# TODO
+			return value
+
+		def parse_constant(self, value):
+			# TODO
+			return value
+
+		def decoder(self, datum):
+			# TODO
+			return datum
+
+For the most part, this is going to be _extremely_ simple.
+
+To get started, we'll create our number parsers, which will basically just use things that are already available to Python, but with our own personal touches.
+
+	import decimal
+
+	...
+
+	def parse_float(self, value):
+		return decimal.Decimal(value)
+
+	def parse_int(self, value):
+		return int(value)
+
+The [decimal](https://docs.python.org/3/library/decimal.html) library supplies us with a type that has some tradeoffs against floats, but is still a well-understood standard. It's a bit slower than floats, but less surprising to the average person. It's an opinionated thing, but if you're not being opinionate, why are you building a language?
+
+And for integers, we'll just use Python's type, for now.
+
+Parsing constants is a little bit trickier, because we'll need to access the current runtime environment for that, so we'll delay implementing that for now.
+
+Instead, we'll implement the idea of an environment.
+
+When our decoder sees:
+
+	{"print": "Hello, World!"}
+
+We want it to do something like:
+
+	env["print"](env, ["Hello, World!"])
+
+That way, we can have functions and allow the user to make their own, too. (Though that particular step is out of the scope of this particular post.)
+
+	class Lang(object):
+		def __init__(self):
+			self.env = self.generate_env()
+
+When we build a language, it should bring along a brand new environment. This simplifies things a bit, and makes it _potentially_ possible to implement sandboxing features further down the track.
+
+For now, we'll only implement the things we need to make the example run. We're not going to show a full standard library. You can flesh that out on your own.
+
+	def generate_env(self):
+		r = {}
+
+		r['print'] = lang_print
+		r['add'] = lang_add
+
+		# Support constants...
+		r['constant'] = self.lang_constant
+
+		return r
+
+Now, we need to decide on a type-signature for a called function.
+
+Functions need:
+
+* To be able to see the current environment (we can pass it in.)
+
+* To be able to see a list of arguments (we can pass it in.)
+
+* To be able to modify the environment (we'll need to return a copy because Python.)
+
+* To be able to return some value/s.
+
+With that in mind, we end up with this sort of template:
+
+	def foo(env, args):
+		...
+
+		return {"env": env, "value": value}
+
+So, let's go ahead and implement our print function. But instead of using Python's print, we'll use a pretty-printer by default. Because we like being different.
+
+	import pprint
+
+	pp = pprint.PrettyPrinter(indent=4)
+
+	def lang_print(env, args):
+		value = pp.pprint(*args)
+
+		return {"env": env, "value": value}
+
+That's pretty straight-forward. And the `generate_env` already has a reference to this function.
+
+Implementing `add` is just as straight-forward.
+
+	def lang_add(env, args):
+		value = sum(*args)
+
+		return {"env": env, "value": value}
+
+So, with all that out of the way, we should implement our `Constant` class, so we can have our idea of constants. (Which is more akin to `symbol`s from Lisp. But anyway...)
+
+	class Constant(object):
+		def __init__(self, value):
+			self.kind = value
+
+		def __repr__(self):
+			return "Constant.{}".format(self.kind)
+
+		def __eq__(self, other):
+			try:
+				return self.kind == other.kind
+			except AttributeError:
+				return False
+
+This lets us print constants, and a constant is only equal to itself. So far, so good. But our `Lang` class needs to expose this kind of object.
+
+There's two ways a constant will hit our Lang.parse_constant function. Either from a function call within the language, like you see for `constant.hello` in the example code, or like `NaN` which will come from the JSON parser. We need to account for both of them, but it isn't that difficult.
+
+	def parse_constant(self, value):
+		try:
+			return self.env['constant'](value)
+		except KeyError:
+			raise SyntaxError(value)
+
+This tells the JSON side of things to use the environment's constructor. We'll still need to have two kinds of return from the environment's constructor, but that's simple enough.
+
+	def lang_constant(self, *args):
+		# lang_constant('NaN')
+		if len(args) == 1:
+			return Constant(args[0])
+		# lang_constant(env, value)
+		elif len(args) == 2:
+			return {"env": args[0], "value": Constant(*args[1]) }
+		else:
+			raise SyntaxError(args)
+
+If we only get one argument, we need to return the constant directly. Otherwise, we need to follow the same pattern as all other stdlib tools.
+
+Yay! We now have constants.
+
+Surprisingly enough, we have exactly one thing left to implement and we've got enough to run the example code: `Lang.decoder(self, datum)`.
+
+There's two ways data will arrive in the decoder. It'll either get a `dict`, from JSON's `object_hook`, or as a `list`, from `object_pairs_hook`. They'll need to be handled slightly differently to each other, but only very slightly.
+
+The main crux will be looking up the key from the environment, and handing it the value as the arguments. We'll just need to keep our environment updated as we go.
+
+	def decoder(self, datum):
+		r = []
+		if isinstance(datum, dict):
+			for k, v in datum.items():
+				payload = self.env[k](self.env, v)
+				self.env = payload['env']
+				r.append(payload['value'])
+		elif isinstance(datum, list):
+			for item in datum:
+				k = item[0]
+				v = item[1:]
+
+				payload = self.env[k](self.env, v)
+				self.env = payload['env']
+				r.append(payload['value'])
+		else:
+			return datum
+
+		if len(r) == 1:
+			return r[0]
+		else:
+			return r
+
+We've added some special handling, so that if the return list is exactly one item long, it'll just return that item.
+
+Non-existent functions raise a `KeyError`, because they don't exist in the current environment, but you could probably wrap that into some nicer error tracking information for the user.
+
+Thanks to the JSON module, everything is parsed in the correct order, and we don't have to care about making sure everything is parsed correctly either.
+
+All we have to do is flesh out the stdlib, and you've got a fully functional, procedural language. In less than 100 LOC.
+
+You could also go further and have more error information by subclassing `JSONDecoder`, and supplying that, but that's getting a wee bit silly for a quick 'n dirty language like this one.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
