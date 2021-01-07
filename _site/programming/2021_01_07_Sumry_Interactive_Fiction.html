@@ -1,0 +1,138 @@
+{%
+	subtitle = 'Sumry - Better Interactive Fiction'
+	value = [["Better" might be one of the most loaded terms in the English language.
+
+[`sumry`](https://sumry.netlify.app/) is an attempt to make a better Interactive Fiction for those who usually find it to be inaccessible. In a similar way to how [`choices`](https://choices.netlify.app/) is an attempt to make a better Interactive Fiction by making it more interactive.
+
+The basic concept is that if JavaScript is unavailable, or the game is being played on any number of alternative user agents (like a braille reader for example), that there is no loss of experience for those players.
+
+There is still a tradeoff - JavaScript _is_ required to store save positions. This is partially mitigated by splitting up chapters into their own files, which also happens to make writing/editing the game easier. But this only partially mitigates that pain point.
+
+It should also be noted that `sumry` requires `localStorage` for the save features. We could possibly try and test cookies and innoDB, but the first is too limited, and the second too heavy, for most use cases. We can place using them as alternative save backends on the list of things to do only if we are avoiding doing anything else.
+
+Manual saving/loading still requires `localStorage`, but serves to mitigate where `localStorage` is not expected to propogate across user sessions.
+
+---
+
+I've made the decision to release [`sumry`](https://git.sr.ht/~shakna/sumry)'s code & narrative as CC0, making it effectively open for anyone to edit, hack on, including the story contained within it.
+
+---
+
+## Basics
+
+The very basic idea of `sumry` is that if we accept linear limitations, like most Interactive Fiction already has, we can provide a better experience than say a Harlowe 1.5Mb dump of JS hellfire, for not just people using screenreaders, but everyone.
+
+This is a basic view of some of `sumry`'s code:
+
+	<details id="prologue-84d8a033a4">
+		<summary>Rain fell gently on the tin roof.</summary>
+
+		<img src="images/rain.jpg" alt="Image of rain." title="Image of rain." />
+
+		<p>The pitter patter knocking out the rhythm above your head is relaxing, reminding you of so many summers spent waiting for the eventual relief of the brief storms.</p>
+
+		<p>It would be pleasant to lie here and reminisce, but that seems like a bad idea. Considering you're bleeding out.</p>
+
+		<p>There isn't much in the remnants of the old tin shed, one of the only structures still standing on the farm.</p>
+
+		<details id="prologue-e5995d9354">
+			<summary>A mouldy apple.</summary>
+
+			<p>It's really gross. And you have no idea how to turn mould that might be penicillin into actual medicine.</p>
+
+			<p>Now seems like a bad time to try to learn.</p>
+		</details>
+
+		<details id="prologue-e874c94842">
+			<summary>A dead rat the size of a cat.</summary>
+
+			<p>The only surprising part of this is that you managed to actually kill the damn thing with your bare hands before it killed you.</p>
+
+			<p>Well... Killed you all at once.</p>
+		</details>
+
+		<details id="prologue-9d6183c16e">
+			<summary><mark>The torn remnants of your shirt.</mark></summary>
+
+			<p>Considering what the rat did, it isn't surprising it is torn up.</p>
+
+			<p>It seems like a bad idea, what with the bacteria that rats carry, but wrapping it around your wound from the bite on your side seems to be the only immediate choice to make.</p>
+
+			...
+
+		</details>
+
+	</details>
+
+The `id` tags are just for the save features, and can be ignored.
+
+The concept is dead simple. Every part of the story is nested inside a `details` tag. The choice being made appears inside a `summary` field, and if it is a game-changing field, we also `mark` it, which is both visual and auditory for other user-agents thanks to a tiny bit of CSS:
+
+	mark::before,
+	mark::after {
+		clip-path: inset(100%);
+		clip: rect(1px, 1px, 1px, 1px);
+		height: 1px;
+		overflow: hidden;
+		position: absolute;
+		white-space: nowrap;
+		width: 1px;
+	}
+
+	mark::before {
+		content: " [important choice start] ";
+	}
+
+	mark::after {
+		content: " [important choice end] ";
+	}
+
+Some user-agents will ignore the mark before/after content, but they should still point out that the text is intended to be highlighted.
+
+With these three semantic fields, `mark`, `summary` and `details`, we can create an easy and completely JS-free way of traversing a story. We can explain things where necessary, hide various bits of lore and leave it up to the player to explore at their own pace, if at all.
+
+And we can focus on what is the most important part of a game of this nature - providing a compelling narrative.
+
+---
+
+## Compatibility
+
+There is a small trade-off here.
+
+The elements we've used _aren't_ available in Internet Explorer. Full stop. There are JS-based shims like [this one](https://github.com/stationer/DetailsShim) for IE, but... Our intention is to avoid JS altogether where we can.
+
+* Firefox has supported all the necessary parts since 2016.
+
+* Chrome has supported all the necessary parts since 2011.
+
+* Safari has supported all the necessary parts since 2014.
+
+* Edge has always supported it, as has Android's WebView, and most of the other browsers that are lesser known.
+
+With the youngest of those approaching four years ago, it's somewhat acceptable to say that any modern web browser can run our game. We're not IE-compatible, which is disappointing, but definently acceptable.
+
+`Lynx` doesn't really work. It shows all options as open, without pointing out where the options are or how they are nested. This is probably a little bit painful, because lynx is part of the workflow for some users making use of accessibility, but at least the site isn't completely broken, just confusing. Okay, it's pretty broken.
+
+---
+
+## Assessing the Result
+
+The results are pretty clear.
+
+* The entire prologue is about 7kb. (~970Kb if you include the images on the page as well.)
+
+	* For comparison, a Harlowe-style package of the same prologue, _without_ any images, is ~580Kb. And breaks all accessibility.
+
+* Loading a page, and it's save, takes somewhere in the range of 1.2 seconds.
+
+	* For comparison, a Harlowe-style package of the same prologue, _without_ any images, on the same hardware, takes somewhere in the range of 4.6 seconds to load.
+
+* Testing under NVDA, JAWS, Windows Narrator, all of them appear to work as expected.
+
+	* For comparison, a Harlowe-style package of the same prologue, requires backtracking several times and has difficulty telling what is a link and what is not. The constant refresh at the beginning of the load makes Narrator stutter.
+
+Thus, `sumry` is a demonstration of a _better_ interactive fiction by our set goals.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
