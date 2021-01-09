@@ -23,6 +23,11 @@ h3 {
 	line-height: 1.2;
 }
 
+article p {
+	padding-left: 0.4em;
+	text-indent: -0.4em;
+}
+
 blockquote {
 	padding: 1em;
 	background-color: rgba(0, 0, 0, 0.05);
