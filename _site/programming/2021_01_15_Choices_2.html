@@ -1,0 +1,40 @@
+{%
+	subtitle = 'Choices... 2?'
+	value = [[A little while ago, I wrote a post about [Choices](https://choices.netlify.app/), a game I'm slowly in the process of writing.
+
+Choices is an experiment in Interactive Fiction, and in being overwhelmed by exponential growth. That is to say, there are a huge number of choices that you can make throughout the game that completely change the experience.
+
+The very first engine [was terrible](https://shatterealm.netlify.app/programming/2020_12_18_Choices.html). But it gave me what I needed to create the [prototype engine](https://git.sr.ht/~shakna/choice_engine), which wasn't all that bad.
+
+Unfortunately, I quickly found that the engine was getting in my way. That is to say, I had to continually modify the engine with things that didn't feel generic. They felt like they belonged in the game itself - but the architecture I used prevented me from doing that.
+
+Thus, after only just over a month... We now have a [new engine](https://git.sr.ht/~shakna/choice_engine2).
+
+The new engine comes with a few tradeoffs, but I managed to port the content from the game to the new engine in less than a day, and extend it a little. In point of fact, the [demo site](https://choices.netlify.app/) is running on the new engine. (Which might be why you lost your save...)
+
+---
+
+## New Architecture
+
+The new architecture is a bit... Bare.
+
+You want value interpolation? Implement it yourself. The engine won't do that for you anymore.
+
+Want to run a script on a particular element? You'll need to set up a timer to check for its eventual existence, and then install the event.
+
+What the engine does is handle history, and routing. And that is _all_.
+
+Moreso: The previous engine required all data to be one page. So whilst it would take longer to load the game, it wouldn't matter if the user was online or not, they could play the entire thing.
+
+However, the new way that pages work is by... Abusing iframes. Yeah. Scream and run all you like, it works really well. Unfortunately, if you can't fetch the new iframe for some reason, like not being able to access the server, then you're going to hit an error message. Which doesn't feel quite as friendly. (It still doesn't _need_ a server. You should be able to play it from a `file://` context.)
+
+The basic idea is that it creates a new iframe with the location being sent for, copies the internal nodes. It remaps all links that include our special indicator that the engine should handle them (`href="#goto-X"`), sets history information, and then rewrites the root element to contain the copied nodes.
+
+This is surprisingly fast, but it does happen slightly slower on mobile devices, where you can expect a little throttle on the number of open connections. However, it's still fast.
+
+Which of course means that the "newest" feature that the engine makes use of is the optional `localStorage`, and the "newest" syntax it makes use of is the `try/catch` which came in during Internet Explorer 5's tenure. You may _just_ be able to play Choices on a 20 year old browser.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
+
