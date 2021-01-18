@@ -1,0 +1,81 @@
+{%
+	subtitle = "Introducing Shakna's Thingscript"
+	value = [[A warning for the squeamish, ahead lies the land of C, dynamic memory, and plain ol' macro abuse.
+
+It's still a very long way from the final iteration, but I've now got [shakna's thingscript](https://git.sr.ht/~shakna/thingscript) to the point where it would be feasible to self-host the interpreter. I'm not actually going to do that, but it's easily possible.
+
+Here's a teeny-tiny taste of the scripting language:
+
+	#!/usr/bin/env thingscript
+
+	Main {
+		printf("-1) %s\\n", argv[-1]);
+
+		For int i = 0; i < argc; i++ Then
+			printf("%d) %s\\n", i, argv[i]);
+		End
+
+		return 0;
+	}
+
+There's a bunch of things there that are familiar, and yet unfamiliar. (The calling binary being at `-1` for example).
+
+Don't be fooled. This is not some brand new programming language. It's C. It is prettified, and linked to some useful functions and has an expanded standard library.
+
+It's still C.
+
+Thingscript takes a bunch of things I've made it in the past and jams them together into an abomination of a scripting language, to provide me with a platform for one-off C scripts which will be able to do more advanced things.
+
+It isn't supposed to be the tool you reach for everyday, and if it becomes that, then you might need to re-evaluate your life choices. Perhaps programming should only ever be a hobby, and never a career, so that you can protect others from yourself.
+
+---
+
+### A Quick Overview
+
+Some people will glance at `thingscript` and assume it's just a wrapper around `libtcc`. It isn't. I mean, it does make use of `libtcc`, but you don't need ~1,000 LOC just to make TCC run on a script file (heck, a hashbang will give you that).
+
+Currently, only two of the many libraries I intend to integrate of my own design are exposed.
+
+One for non-cryptographic hashes, which includes my own [James' Little Hash](https://git.sr.ht/~shakna/jlh), which I've found is surprisingly good at doing what it is supposed to. I am yet to actually find a collision, so I can't really evaluate exactly how good the hash is, but I'm comfortable using it mostly everywhere to avoid having to do a full string comparison, but falling back if the hash matches.
+
+Another for a fixed-length string, without a NULL terminator. It makes use of JLH, and covers most of the usecases of `string.h`, with intention to cover more. The overhead of storing length & hash versus the performance of near-instant comparisons is a no-brainer.
+
+Boehm GC is also integrated so that you can surrender control to a simple GC. (And automatically initialised so you don't need to remember to do anything).
+
+The `assert` function is a modified version of [jassert](https://git.sr.ht/~shakna/jassert), rewritten to work with some of the workarounds necessary for `thingscript`. The output is a little bit more human-readable, and you've also got a `assertn` so you can supply extra information for when things explode.
+
+The control flow stuff you see above is from the truly horrible [CNoEvil](https://git.sr.ht/~shakna/cnoevil3/) project, but you can use them as you want, to improve readability. And yes, I did say improve. Symbols are the bane of the blind programmer, remapping the symbols to auditory representations is already necessary, why not remap them at the language level? (Technically I'm not a blind programmer. I do have problems seeing every now and then, just not everyday).
+
+My intention is to expand the standard set of tools until it's somewhat comparable to Python's stdlib, and then use it in my day-to-day scripting needs. Things like prototyping matrix comparisons and so on.
+
+---
+
+### A Good Idea?
+
+Probably not. Which is why I'm more than happy to break things that people expect of something like this. (Such as the control-flow macros).
+
+Heck, having your own personalised scripting language is probably not a "good idea". Mostly because people expect ecosystems and so on. Firm version numbers and no breaking changes. The best scripting language is the one you can rely on to not break when you re-run that script you wrote five years ago and haven't needed since.
+
+That it's incompatible with valgrind (from both libtcc and libgc) and is basically just C should be more than enough to warn you off. Finding bugs will be an exercise in frustration, if you spot them.
+
+Yet, having a personal playground that you can integrate the entire kitchen sink and anything you ever need into it... The alure is hard to resist.
+
+Terrible, awful idea. I love it.
+
+---
+
+### What's Next?
+
+Numbers and UTF8, is the simple answer.
+
+It's drudge work, integrating BigNums and providing the wrappers around our string_t for particular UTF8 operations (it can already store UTF8 without a care). However, I sort of expect those two things to underpin a lot of the later work to come.
+
+The number library will probably be a wrapper around Tom's Fast Math or GMP, depending on how many GNUisms make GMP difficult to expose to the underlying compiler. TFM isn't as well audited as GMP, but it should be "good enough" most of the time.
+
+The UTF8 grapheme matcher may require integrating PCRE, but we'll see. I have been considering integrating Lua, which would make it much simpler, but much heavier.
+
+But I might hate the drudge work, and build some INI or CSV parsers for it instead.
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
