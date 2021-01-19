@@ -37,4 +37,19 @@
 </article>
 {% end %}
 
+<div id="comments"></div>
+
+<script>
+fetch("comments.json")
+  .then(function(response) {
+  	return response.json();
+  })
+  .then(function(data) {
+  	console.log(data);
+  })
+  .catch(function(err) {
+  	console.log(err);
+  })
+</script>
+
 {{ include(site_directory .. '/footer.tpl', {toc=toc}) }}
