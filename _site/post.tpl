@@ -79,7 +79,8 @@ window.addEventListener('load', function() {
 <p><a href="https://todo.sr.ht/~shakna/shatterealm/{{comment_id}}">View comments.</a></p>
 </noscript>
 
-<p><a href="mailto:~shakna/shatterealm/{{comment_id}}@todo.sr.ht">Submit comment...</a></p>
+<p><a href="mailto:~shakna/shatterealm/{{comment_id}}@todo.sr.ht?subject=Comment">Submit comment...</a></p>
+<p><a href="mailto:~shakna/shatterealm/{{comment_id}}/subscribe@todo.sr.ht?subject=Subscribing%20to%20~shakna/shatterealm%23{{comment_id}}&body=Sending%20this%20email%20will%20subscribe%20your%20email%20address%20to%20~shakna/shatterealm%23{{comment_id}}%2C%0Ain%20so%20doing%20you%20will%20start%20receiving%20comments.%0A%0AYou%20don%27t%20need%20to%20subscribe%20if%20you%27re%20already%20subscribed%0Ato%20the%20entire%20~shakna/shatterealm%20tracker.%0A%0AYou%20can%20unsubscribe%20at%20any%20time%20by%20mailing%20%3C~shakna/shatterealm/{{comment_id}}/unsubscribe%40todo.sr.ht%3E.%0A">Subscribe to this comment thread.</a></p>
 {% end %}
 
 {{ include(site_directory .. '/footer.tpl', {toc=toc}) }}
