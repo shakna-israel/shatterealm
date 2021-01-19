@@ -75,7 +75,11 @@ window.addEventListener('load', function() {
 	  });
 });
 </script>
-<p><a href="https://todo.sr.ht/~shakna/shatterealm/{{comment_id}}">Submit comment...</a></p>
+<noscript>
+<p><a href="https://todo.sr.ht/~shakna/shatterealm/{{comment_id}}">View comments.</a></p>
+</noscript>
+
+<p><a href="mailto:~shakna/shatterealm/{{comment_id}}@todo.sr.ht">Submit comment...</a></p>
 {% end %}
 
 {{ include(site_directory .. '/footer.tpl', {toc=toc}) }}
