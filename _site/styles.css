@@ -50,9 +50,9 @@ details {
 	margin: 0 auto;
 	padding: 0.4em;
 	text-align: center;
-	width: 50%;
 	border-block-style: solid;
 	border-radius: 1em;
+	width: 90%;
 }
 
 @media (min-width: 40em) {
@@ -64,6 +64,10 @@ details {
 	details {
 		display: inline-block;
 		padding: 0;
+	}
+
+	.comment {
+		width: 50%;
 	}
 }
 
