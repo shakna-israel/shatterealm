@@ -21,10 +21,6 @@
 
 <meta http-equiv="Strict-Transport-Security" content="max-age=15768000; preload">
 
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'">
-<meta http-equiv="X-Content-Security-Policy" content="default-src 'self'">
-<meta http-equiv="X-WebKit-CSP" content="default-src 'self'">
-
 <link rel="stylesheet" href="{{(base_url or '/') .. 'styles.css'}}" />
 <link rel="alternate" type="application/rss+xml" title="{{ (config.site_name or '') .. ' RSS'}}" href="{{(base_url or '/') .. 'feed.xml'}}"/>
 

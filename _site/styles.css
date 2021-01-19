@@ -45,6 +45,16 @@ details {
 	padding: 1.2em;
 }
 
+.comment {
+	display: block;
+	margin: 0 auto;
+	padding: 0.4em;
+	text-align: center;
+	width: 50%;
+	border-block-style: solid;
+	border-radius: 1em;
+}
+
 @media (min-width: 40em) {
 	body {
 		max-width: 650px;
