@@ -8,6 +8,8 @@ packages:
   - curl
   - zip
   - valgrind
+  - python3
+  - python3-requests
 secrets:
   - b1896a8e-ceb4-4d5b-abf2-6e6016f47212
 sources:
