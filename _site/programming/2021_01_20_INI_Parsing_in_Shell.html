@@ -1,0 +1,200 @@
+{%
+	comment_id = '26'
+	subtitle = 'INI Parsing in Shell'
+	value = [===[Anytime you hear the words "parsing" and "shell" in the same sentence, you should feel a sort of queasy uneasiness. The shell is a very useful little language, especially for rapid prototyping.
+
+Parsing, however, is not something the shell is great for. A lot of it's normal behaviours are things that are _very_ bad for parsing.
+
+Unfortunately, I needed a somewhat less-than-dynamic configuration format that needed to be read by the shell at some point in the past. That meant that straight-up sourcing the configuration file was out, and I needed an actual format. Even more unfortunate, I wasn't allowed to install anything. (Sound familiar? Same place that I developed [shiv](/programming/2021_01_02_Shiv_Lets_Build_a_VCS.html) at.)
+
+I ended up deciding to use INI, mainly because there isn't an agreed on standard, which would allow me to take liberties _and_ it's a widely understood format.
+
+---
+
+## The Goal
+
+Whilst I needed the configuration file to be static, I could still use sourcing on the output of our parser, so we'll basically make something that takes this input:
+
+	[ Main ]
+	x = 34
+	y = 3
+
+	[Hello]
+	z=3
+	x=Hello world
+
+	[ Hello World!]
+	y=Boo!
+
+	[ This has numbers 62 ]
+	12=twelve
+
+And creates this output (which can then be sourced):
+
+	ini_Main__x='34'
+	ini_Main__y='3'
+	ini_Hello__z='3'
+	ini_Hello__x='Hello world'
+	ini_Hello_World___y='Boo!'
+	ini_This_has_numbers_62__12='twelve'
+
+We're doing some name-mangling here, which is a bit ugly, but so long as it follows an expected pattern (which it does), then it is useful to the programmer still.
+
+---
+
+## The Code
+
+The code I'm going to talk through comes from [minini](https://git.sr.ht/~shakna/minini), which is pretty fully-fledged. We're going to skip over some aspects of it, like the CLI handling.
+
+That entire script is 115 readable lines, whitespace and comments included, so what we're looking at really isn't a complicated little tool.
+
+---
+
+## Preperations
+
+Firstly, as ugly as it is, we need to make sure that the file we're going to parse has a trailing newline. You could copy the file to a temporary file, and then make sure it has a newline, but we're just going to modify the original instead:
+
+	# Check the file correctly has a trailing newline:
+	if [ $(tail -c1 "$1" | wc -l) -eq 0 ]; then
+	  echo >> "$1"
+	fi
+
+The reason we need to do that is so that our read loop later terminates on the last newline it finds, not on end-of-file.
+
+	# Default section
+	# define before loop, so it doesn't get reset
+	section='__main__'
+
+In parsing our INI file, we want to be as flexible as possible. A sort of a parser that will always try and get you a predictable result no matter what you feed to it. So if there is no section header before a variable, it still gets put somewhere predictable.
+
+For example:
+
+	x = 12
+	y = 2
+
+	[ Main ]
+	x = 34
+	y = 3
+
+This would be parsed equivalent to:
+
+	[ __main__ ]
+	x = 12
+	y = 2
+
+	[ Main ]
+	x = 34
+	y = 3
+
+It's more flexible. Incidentally, it also simplifies our INI parser.
+
+Last step in our setup, we need somewhere to store the data we're creating:
+
+	# Buffer for final output
+	buffer=' '
+
+---
+
+## The Loop
+
+This is the basic loop we'll be expanding on:
+
+	# Read data line by line
+	cat "$1" | while read line
+	do
+	  if [ ! -z "$line" ]; then # Skip blank lines
+
+	  # Strip whitespace
+	  data=$(echo "$line" | sed -e 's/^[[:space:]]*//')
+
+	  # Get first non-whitespace character
+	  c=$(echo "$data" | cut -c1)
+
+	  if [ "$c" = '[' ]; then
+
+	  	# TODO: Parse Section Title
+
+	  elif echo "$data" | grep -q '='; then
+
+	  	# TODO: Parse assignment
+
+	  fi
+
+	  # Echo built shell var, stripping blank lines
+	  echo "$buffer" | sed '/^\s*$/d'
+	  fi
+	done
+
+We pipe from `cat` to read to maintain the current shell and not fork. (Like would have happened if we fed the file directly into our while loop).
+
+Then, thanks to the line-oriented language, we either look for a section title or assignment. We skip over whitespace, so that indentation doesn't matter. Humans like indenting things to be readable (in some cases), we shouldn't care if they do.
+
+### Section Title
+
+Grabbing the section title isn't that complicated.
+
+	# Parse section title
+
+    # grep grabs between brackets, sed strips leading and trailing whitespace
+    section=$(echo "$data" | grep -Po '\[\K[^]]*' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    # make section shellsafe
+    section=$(echo "ini_$section" | sed 's/[^a-zA-Z0-9]/_/g')
+
+    if [ "$DEBUG" -eq 0 ]; then
+      echo "Section: <$section>"
+    fi
+
+The most complicated part is the name-mangling of the section title to make it safe to become a shell variable.
+
+With these two lines of code, we now support all of these variations, and more:
+
+	[main]
+	[ main]
+	[ main ]
+	   [         main]
+
+### Assignment
+
+	# Parse assignment
+
+    # get varname and strip whitespace
+    varname=$(echo "$data" | sed -e 's/=.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    # get value to be assigned and strip whitespace
+    value="$(quote "$(echo "$data" | sed -e 's/.*=//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')")"
+
+    if [ "$DEBUG" -eq 0 ]; then
+      echo "Variable: <$section::$varname> set to <$value>"
+    fi
+    buffer="${section}__$varname='$value'"
+
+Some of this is similar to the way we grab section titles.
+
+The sed lines basically just tell it to grab before or after the `=` sign, and strip whitespace from the start and end of whatever it finds. Which means that the confuration writer can have as many or as few whitespace characters around the symbol as they are comfortable with.
+
+However, a non-builtin function is introduced here and is absolutely vital. `quote`, which will make sure that values are correctly quoted to turn into a value that can be sourced.
+
+That particular magic, looks like:
+
+	quote () { 
+	  local quoted=${1//\'/\'\\\'\'};
+	  printf "%s" "$quoted"
+	}
+
+Thanks to some POSIX 2008 pattern magic, which is basically unreadable because it's all slashes, we convert quotes correctly in payloads to look like they've been escaped for the shell that will eval our data later.
+
+---
+
+## Fin
+
+As insane as it might seem... We're done.
+
+The program doesn't really support comments or multiline values in the INI file, but adding support for those shouldn't be too difficult, but was sort of beyond the scope of a simple shell script like this.
+
+All we've used are POSIX shell, sed, grep and cat. And now, we can parse in a simple static configuration to whatever shell script we needed to supply it to.
+
+]===]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
