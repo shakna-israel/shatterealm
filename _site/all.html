@@ -34,10 +34,25 @@
 
 {% end %}
 
-{% if v.description then %}
-<br /><small>{{v.description}}</small>
+<br />
+{% if v.description ~= config.description then %}
+<small>{{v.description}}</small>
 {% elseif v.value then %}
-<br /><small>{{markdown(iformat(v.value:sub(1, 150) .. '...', _G or {}))}}</small>
+
+	{% if type(v.value) == 'string' then %}
+	  <small>
+	  {{ iformat(v.value:sub(1, 50) .. '...', _G) }}
+	  </small>
+	{% elseif type(v.value) == 'table' then %}
+	  <small>
+	  {{ iformat(v.value[1]:sub(1, 50) .. '...', _G) }}
+	  </small>
+	{% else %}
+	  <small>{{ v.name }} - {{ config.description }}</small>
+	{% end %}
+{% else %}
+<small>{{ v.name }} - {{ config.description }}</small>
+
 {% end %}
 
 </li>
@@ -82,10 +97,25 @@
 	<li>
 		<a href="{{v.path}}">{{name}}</a>
 
-		{% if v.description then %}
-		<br /><small>{{v.description}}</small>
+		<br />
+		{% if v.description ~= config.description then %}
+		<small>{{v.description}}</small>
 		{% elseif v.value then %}
-		<br /><small>{{markdown(iformat(v.value:sub(1, 150) .. '...', _G or {}))}}</small>
+
+			{% if type(v.value) == 'string' then %}
+			  <small>
+			  {{ iformat(v.value:sub(1, 50) .. '...', _G) }}
+			  </small>
+			{% elseif type(v.value) == 'table' then %}
+			  <small>
+			  {{ iformat(v.value[1]:sub(1, 50) .. '...', _G) }}
+			  </small>
+			{% else %}
+			  <small>{{ v.name }} - {{ config.description }}</small>
+			{% end %}
+		{% else %}
+		<small>{{ v.name }} - {{ config.description }}</small>
+
 		{% end %}
 		
 	</li>
