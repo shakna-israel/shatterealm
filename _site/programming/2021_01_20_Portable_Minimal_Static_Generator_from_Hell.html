@@ -27,9 +27,9 @@ So why not... Abuse it?
 
 At the end of the project, this code becomes a valid post page. And if you hate it... I did warn you. You've got no one to blame but yourself that this hideous little monstrosity is now embedded inside your memories.
 
-	# ${title} - Landing page!
+	# $\{title} - Landing page!
 
-	<include href="${base_url}navigation.html"></include>
+	<include href="$\{base_url}navigation.html"></include>
 
 	Hello, ***World***!
 
@@ -83,13 +83,13 @@ Let's get configuration parsing out of the way. We've already established that w
 	fi
 
 	# Get default values
-	if [ -z "${site_dir}" ]; then
+	if [ -z "$\{site_dir}" ]; then
 		site_dir='_site'
 	fi
-	if [ -z "${build_dir}" ]; then
+	if [ -z "$\{build_dir}" ]; then
 		build_dir='_build'
 	fi
-	if [ -z "${base_url}" ]; then
+	if [ -z "$\{base_url}" ]; then
 		base_url='/'
 	fi
 
@@ -106,21 +106,21 @@ If you're confused what is happening here, this is called `sourcing`. The dot co
 ## Pre-rendering Setup
 
 	# Clean the build directory...
-	if [ -d "${build_dir}" ]; then
-		rm -rf "${build_dir}"
+	if [ -d "$\{build_dir}" ]; then
+		rm -rf "$\{build_dir}"
 	fi
 
 	# Get length of site_dir
-	site_dir_length=$(("$(echo "${site_dir}" | wc -c)" - 1))
+	site_dir_length=$(("$(echo "$\{site_dir}" | wc -c)" - 1))
 	# Get length of build_dir
-	build_dir_length=$(("$(echo "${build_dir}" | wc -c)" - 1))
+	build_dir_length=$(("$(echo "$\{build_dir}" | wc -c)" - 1))
 
 	# Get files to render...
 	file_list="$(mktemp)"
-	find "$site_dir" -name '*.md' | sort > "${file_list}"
+	find "$site_dir" -name '*.md' | sort > "$\{file_list}"
 
 	# Start rendering...
-	mkdir -p "${build_dir}"
+	mkdir -p "$\{build_dir}"
 
 There's a couple things we need to do before we can start generating our new site.
 
@@ -142,26 +142,26 @@ The entire render-loop looks something like:
 
 		# TODO...
 
-	done < "${file_list}"
+	done < "$\{file_list}"
 
 Note that this is only for the files we want to template-expand. We'll loop over other static files to copy them over later.
 
 Now, remember how we stored the length of the site and build directories earlier? This is where we'll begin to use 'em.
 
 	# Remove the site_dir...
-	base_path="$(echo "${line}" | sed 's/\(.\{'"${site_dir_length}"'\}\)//')"
+	base_path="$(echo "$\{line}" | sed 's/\(.\{'"$\{site_dir_length}"'\}\)//')"
 
 	# Set the output path...
-	output_path="$(echo "${build_dir}${base_path%.md}.html")"
+	output_path="$(echo "$\{build_dir}$\{base_path%.md}.html")"
 
 Now, before someone screams that this is a Bash-ism, and I specified POSIX shell earlier, it isn't. POSIX 2008 and later requires that the shell understand certain _very_ useful pattern matches. So we'll make use of them and just specify you need a recent POSIX shell.
 
 We've only set up half the output path, however. We'll need to do an edge-case check:
 
 	# Check if this is an index file, or if we should prettify it...
-	fname="$(basename "${output_path}")"
+	fname="$(basename "$\{output_path}")"
 	if [ "$fname" != 'index.html' ]; then
-		output_path="$(dirname "${output_path}")/${fname%.html}/index.html"
+		output_path="$(dirname "$\{output_path}")/$\{fname%.html}/index.html"
 	fi
 
 There we are! Now we'll get pretty URLs from any half-decent web server made after 1999. Which is going to be pretty much anything hosting your static files, wherever you put it.
@@ -169,14 +169,14 @@ There we are! Now we'll get pretty URLs from any half-decent web server made aft
 Speaking of putting things somewhere, we need to make sure the URL path will exist in our build directory...
 
 	# Create the output folder...
-	mkdir -p "$(dirname "${output_path}")"
+	mkdir -p "$(dirname "$\{output_path}")"
 
 And now comes the actual rendering of content. We'll use `pandoc` for the convenience of converting to HTML, but there are plenty of `Markdown->HTML` converters that exist as shell scripts that you could go and integrate by yourself.
 
 	# Render the template file...
-	template="$(cat ${line})"
-	eval "echo \"${template}\"" \
-	| pandoc -fmarkdown -thtml5 > "${output_path}"
+	template="$(cat $\{line})"
+	eval "echo \"$\{template}\"" \
+	| pandoc -fmarkdown -thtml5 > "$\{output_path}"
 
 Take a moment to breathe.
 
@@ -196,34 +196,34 @@ However, we can add some extra niceties to the output file.
 
 We'll support including other files in a dynamic way, rather than static, because it's easier. The goal in this case is to be able to do something like:
 
-	<include href="${base_url}navigation.html"></include>
+	<include href="$\{base_url}navigation.html"></include>
 
 Which is actually relatively trivial to implement, because we're not doing anything that nuts. Well, okay, maybe it is a little nuts and a static generator really should be handling includes, but this is the easier way to do it.
 
 	# Extras for functionality...
-	echo '<noscript>JavaScript appears to be disabled. Some dynamic features may require it.</noscript>' >> "${output_path}"
-	echo '<script>' >> "${output_path}"
+	echo '<noscript>JavaScript appears to be disabled. Some dynamic features may require it.</noscript>' >> "$\{output_path}"
+	echo '<script>' >> "$\{output_path}"
 
 	# Support include element
-	echo 'window.addEventListener("load", function() {' >> "${output_path}"
-	echo '	var els = document.querySelectorAll("include");' >> "${output_path}"
-	echo '' >> "${output_path}"
-	echo '	for(var i = 0; i < els.length; i++) {' >> "${output_path}"
-	echo '		var fetch_uri = els[i].getAttribute("href");' >> "${output_path}"
-	echo '		' >> "${output_path}"
-	echo '		(function(el) {' >> "${output_path}"
-	echo '			fetch(fetch_uri)' >> "${output_path}"
-	echo '			  .then(response => {' >> "${output_path}"
-	echo '			    return response.text()' >> "${output_path}"
-	echo '			  })' >> "${output_path}"
-	echo '			  .then(data => {' >> "${output_path}"
-	echo '			    el.innerHTML = data;' >> "${output_path}"
-	echo '			  });' >> "${output_path}"
-	echo '		})(els[i]);' >> "${output_path}"
-	echo '	}' >> "${output_path}"
-	echo '});' >> "${output_path}"
+	echo 'window.addEventListener("load", function() {' >> "$\{output_path}"
+	echo '	var els = document.querySelectorAll("include");' >> "$\{output_path}"
+	echo '' >> "$\{output_path}"
+	echo '	for(var i = 0; i < els.length; i++) {' >> "$\{output_path}"
+	echo '		var fetch_uri = els[i].getAttribute("href");' >> "$\{output_path}"
+	echo '		' >> "$\{output_path}"
+	echo '		(function(el) {' >> "$\{output_path}"
+	echo '			fetch(fetch_uri)' >> "$\{output_path}"
+	echo '			  .then(response => {' >> "$\{output_path}"
+	echo '			    return response.text()' >> "$\{output_path}"
+	echo '			  })' >> "$\{output_path}"
+	echo '			  .then(data => {' >> "$\{output_path}"
+	echo '			    el.innerHTML = data;' >> "$\{output_path}"
+	echo '			  });' >> "$\{output_path}"
+	echo '		})(els[i]);' >> "$\{output_path}"
+	echo '	}' >> "$\{output_path}"
+	echo '});' >> "$\{output_path}"
 
-	echo '</script>' >> "${output_path}"
+	echo '</script>' >> "$\{output_path}"
 
 With that, we're done with the while loop that renders all the template files.
 
@@ -235,16 +235,16 @@ Finding and copying our static files across is plenty simple, and only a few lin
 
 	# Find and copy non-templated files to the right places...
 	all_files="$(mktemp)"
-	find "$site_dir" -type f | sort > "${all_files}"
+	find "$site_dir" -type f | sort > "$\{all_files}"
 
 	extra_files="$(mktemp)"
-	comm -13 "${file_list}" "${all_files}" | sort > "${extra_files}"
+	comm -13 "$\{file_list}" "$\{all_files}" | sort > "$\{extra_files}"
 
 	while read -r line; do
 		# Remove the site_dir...
-		base_path="$(echo "${line}" | sed 's/\(.\{'"${site_dir_length}"'\}\)//')"
+		base_path="$(echo "$\{line}" | sed 's/\(.\{'"$\{site_dir_length}"'\}\)//')"
 		# Set the output path...
-		output_path="$(echo "${build_dir}${base_path}")"
+		output_path="$(echo "$\{build_dir}$\{base_path}")"
 
 		# Copy the file
 		cp "$line" "$output_path"
@@ -261,36 +261,36 @@ There's probably some directory-exists checking we should be doing, but whatever
 No static generator should be without navigation. In point of fact, that's why we created that `include` hack earlier.
 
 	# Create navigation...
-	if [ -r "${site_dir}"/navigation.html ]; then
+	if [ -r "$\{site_dir}"/navigation.html ]; then
 		# Do nothing already copied user-specified navigation.
 		:
 	else
 		# Generate some navigation...
 		toc_files="$(mktemp)"
-		find "${build_dir}" -name '*.html' | sort > "${toc_files}"
+		find "$\{build_dir}" -name '*.html' | sort > "$\{toc_files}"
 
 		toc_file="$(mktemp)"
 		echo '<navigation><ul>' > "$toc_file"
 
 		while read -r line; do
 			# Remove the build_dir...
-			base_path="$(echo "${line}" | sed 's/\(.\{'"${build_dir_length}"'\}\)//')"
-			link_path="$(echo "${base_url}${base_path:1:-10}")"
+			base_path="$(echo "$\{line}" | sed 's/\(.\{'"$\{build_dir_length}"'\}\)//')"
+			link_path="$(echo "$\{base_url}$\{base_path:1:-10}")"
 
 			if [ "$link_path" = '/' ]; then
 				link_name='Home'
 			else
-				link_name="$(basename "${link_path}" \
+				link_name="$(basename "$\{link_path}" \
 				  `# Title case the name:`\
 				  | awk 'BEGIN{split("a the to at in on with and but or",w); for(i in w)nocap[w[i]]}function cap(word){return toupper(substr(word,1,1)) tolower(substr(word,2))}{for(i=1;i<=NF;++i){printf "%s%s",(i==1||i==NF||!(tolower($i) in nocap)?cap($i):tolower($i)),(i==NF?"\n":" ")}}' \
 			  	)"
 			fi
 
-			echo "<li><a href='${link_path}'>${link_name}</a></li>" >> "${toc_file}"
+			echo "<li><a href='$\{link_path}'>$\{link_name}</a></li>" >> "$\{toc_file}"
 		done < "$toc_files"
-		echo '</ul></navigation>' >> "${toc_file}"
+		echo '</ul></navigation>' >> "$\{toc_file}"
 		# Push our navigation include...
-		mv "${toc_file}" "${build_dir}/navigation.html"
+		mv "$\{toc_file}" "$\{build_dir}/navigation.html"
 	fi
 
 Oof. That's a bit to toss up all at once, mostly the awk line that is incomprehensible madness.
@@ -318,9 +318,9 @@ Okay... So we:
 We've actually left a few temporary files around for comparison throughout. They need to die:
 
 	# Cleanup
-	rm "${file_list}"
-	rm "${all_files}"
-	rm "${toc_files}"
+	rm "$\{file_list}"
+	rm "$\{all_files}"
+	rm "$\{toc_files}"
 
 ---
 
