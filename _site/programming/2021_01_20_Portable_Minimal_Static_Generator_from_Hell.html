@@ -1,0 +1,353 @@
+{%
+	comment_id = '25'
+	subtitle = 'A Minimal & Portable Static Site Generator from Hell'
+	value = [[***Warning: The following code may make you want to scratch your eyeballs out with a spatula.***
+
+Well, now that we have the warning out of the way... On to making an extremely minimal and simply portable static site generator!
+
+You can find this awful abomination of a project over [here](https://git.sr.ht/~shakna/site_sh).
+
+---
+
+There are ideas that occur to you sometimes like a bolt of lightning out of a clear sky. The majority of these turn out to be trash. Sometimes they turn out to be good ideas.
+
+On very rare occassions it turns out to both work, and be as bad an idea as you expected it to be.
+
+This is the latter.
+
+It started when I was looking at a few random Markdown engines to see what tricks they used to convert from the format, with a goal to implement one myself for an extremely resource-constrained system (less than 2Mb of RAM). Whilst that project is yet to manifest without the ocassional crash, the idea surfaced.
+
+The majority of what you want from a template language, like used by most static generators, already exists in POSIX shell. It's generally only used to insert variables, or the fixed output from one command, but technically speaking, the strings inside a POSIX shell get a full environment to fork and do things with.
+
+So why not... Abuse it?
+
+---
+
+## The Goal
+
+At the end of the project, this code becomes a valid post page. And if you hate it... I did warn you. You've got no one to blame but yourself that this hideous little monstrosity is now embedded inside your memories.
+
+	# ${title} - Landing page!
+
+	Hello, ***World***!
+
+	$(for i in $(seq 1 10); do
+		echo 'This is such a bad idea...'
+	done)
+
+However, as we're also building a static site generator, we should throw in some configuration values as well. Thankfully, that's basically just sourcing a shell script, so we're not going to even bother pretending it has a special format. A config file might look like:
+
+	title='My Site Title'
+	site_dir='_site'
+	build_dir='_build'
+	base_url='/'
+
+We probably want to add some structure too, for sanity's sake. And to make it easier to generate prettier URLs.
+
+So, the project will end up looking like:
+
+	config.sh
+	_site/
+	├── index.md
+	└── pages
+	    ├── index.md
+	    └── welcome.md
+
+Which would give us the URLs:
+
+* /
+
+* /pages
+
+* /pages/welcome
+
+There's no need for anyone to know the dirty secret of how you generated the site, as it is static. They'll never know that the backend is the product of madness.
+
+Now, I know I'm rambling a bit, showing off the goals, and not giving you any real promised code. The main reason for that is two-fold.
+
+1. I prefer to know where I'm going before I start coding. Call me old fashioned, but I love me a good spec, even if it is as haphazard as this one. I often write out a project prototype completely on paper with pen long before I touch a keyboard. This is a preference, but tends to get me towards a polished project faster, though the first prototype comes out slower.
+
+2. The final code for this project is embarassingly little, because of the way we'll be abusing the shell. It's about 130 LOC, all up. And yes, that is completely unobfuscated, with comments speckled here and there.
+
+---
+
+## The Config
+
+Let's get configuration parsing out of the way. We've already established that we can just source from the shell, so we just need to make sure there are some reasonable defaults.
+
+	# Load a config if we have one
+	if [ -r ./config.sh ]; then
+		. ./config.sh
+	fi
+
+	# Get default values
+	if [ -z "${site_dir}" ]; then
+		site_dir='_site'
+	fi
+	if [ -z "${build_dir}" ]; then
+		build_dir='_build'
+	fi
+	if [ -z "${base_url}" ]; then
+		base_url='/'
+	fi
+
+Now, you could have errored and required the user to set the variable value, or you could have output a warning to stderr that you're using a default value. However, this project has sharp edges, so we don't really care about that.
+
+Aaaand... We're done.
+
+That's all you need to do to set up the configuration. Make sure it's at the start of your shell script that will become your site generator, because if the user sets some custom value we want to make sure we override it if it conflicts with out own later on, rather than random fuckery occurring.
+
+If you're confused what is happening here, this is called `sourcing`. The dot command before the config file reads in the environment from that script. You are basically running the config file as a script within the current shell. It can get a bit more complicated, but if you, say, create an echo command inside the config file, you'll see that echo when you source it.
+
+---
+
+## Pre-rendering Setup
+
+	# Clean the build directory...
+	if [ -d "${build_dir}" ]; then
+		rm -rf "${build_dir}"
+	fi
+
+	# Get length of site_dir
+	site_dir_length=$(("$(echo "${site_dir}" | wc -c)" - 1))
+	# Get length of build_dir
+	build_dir_length=$(("$(echo "${build_dir}" | wc -c)" - 1))
+
+	# Get files to render...
+	file_list="$(mktemp)"
+	find "$site_dir" -name '*.md' | sort > "${file_list}"
+
+	# Start rendering...
+	mkdir -p "${build_dir}"
+
+There's a couple things we need to do before we can start generating our new site.
+
+The first step is to erradicate any previous build, because we really can't be bothered checking to see if files have changed based on a checksum or timing information, and those can get a bit finnicky, and then we might have to supply an optional 'from clean' type flag... So, let's just destroy any previous build.
+
+Then, we need to get the length of the strings that define our site and build directory names, so that we can easily substitute them out later. Basically we need to be able to replace `_site/pages/index.md` with `_build/pages/index.html` at some point, and just remembering the length at the start of the path makes that easier to do.
+
+Then, we need to get a once-off of the files we're going to process. This is subject to race conditions, but if the user edits the files whilst we're generating, then they sort of deserve whatever hellspawn they unleash upon themselves.
+
+Finally, we need to recreate that directory we killed earlier. We use `-p` here because they might actually want the build directory inside a bunch of others if they're completely insane, and by using our project... We know they are.
+
+---
+
+## Rendering
+
+The entire render-loop looks something like:
+
+	while read -r line; do
+
+		# TODO...
+
+	done < "${file_list}"
+
+Note that this is only for the files we want to template-expand. We'll loop over other static files to copy them over later.
+
+Now, remember how we stored the length of the site and build directories earlier? This is where we'll begin to use 'em.
+
+	# Remove the site_dir...
+	base_path="$(echo "${line}" | sed 's/\(.\{'"${site_dir_length}"'\}\)//')"
+
+	# Set the output path...
+	output_path="$(echo "${build_dir}${base_path%.md}.html")"
+
+Now, before someone screams that this is a Bash-ism, and I specified POSIX shell earlier, it isn't. POSIX 2008 and later requires that the shell understand certain _very_ useful pattern matches. So we'll make use of them and just specify you need a recent POSIX shell.
+
+We've only set up half the output path, however. We'll need to do an edge-case check:
+
+	# Check if this is an index file, or if we should prettify it...
+	fname="$(basename "${output_path}")"
+	if [ "$fname" != 'index.html' ]; then
+		output_path="$(dirname "${output_path}")/${fname%.html}/index.html"
+	fi
+
+There we are! Now we'll get pretty URLs from any half-decent web server made after 1999. Which is going to be pretty much anything hosting your static files, wherever you put it.
+
+Speaking of putting things somewhere, we need to make sure the URL path will exist in our build directory...
+
+	# Create the output folder...
+	mkdir -p "$(dirname "${output_path}")"
+
+And now comes the actual rendering of content. We'll use `pandoc` for the convenience of converting to HTML, but there are plenty of `Markdown->HTML` converters that exist as shell scripts that you could go and integrate by yourself.
+
+	# Render the template file...
+	template="$(cat ${line})"
+	eval "echo \"${template}\"" \
+	| pandoc -fmarkdown -thtml5 > "${output_path}"
+
+Take a moment to breathe.
+
+One more.
+
+The steps for this are clearly insane in almost every way that exists.
+
+1. Read in template file. Nothing to see here. (Well, a _maybe_ useless use-of-cat, but it really doesn't matter a single damn).
+
+2. We call `eval`, on the data from the template file. This is somewhat akin to massacring our entire family in a Herculean-style fit on insanity, as we just exposed out script and contents to the template file and allowed it to self-modify in any way it sees fit, but that's how we're choosing to expand the template.
+
+3. We toss the output of that eval call at pandoc, and tell it to convert from Markdown to HTML5, to our afore-decided path.
+
+For the most part, we're done. We expanded the template, and rendered it. In a way that's sort of like running a newly-sharpened knife across your bare skin because you're slightly itchy, but we did.
+
+However, we can add some extra niceties to the output file.
+
+We'll support including other files in a dynamic way, rather than static, because it's easier. The goal in this case is to be able to do something like:
+
+	<include href="${base_url}navigation.html"></include>
+
+Which is actually relatively trivial to implement, because we're not doing anything that nuts. Well, okay, maybe it is a little nuts and a static generator really should be handling includes, but this is the easier way to do it.
+
+	# Extras for functionality...
+	echo '<noscript>JavaScript appears to be disabled. Some dynamic features may require it.</noscript>' >> "${output_path}"
+	echo '<script>' >> "${output_path}"
+
+	# Support include element
+	echo 'window.addEventListener("load", function() {' >> "${output_path}"
+	echo '	var els = document.querySelectorAll("include");' >> "${output_path}"
+	echo '' >> "${output_path}"
+	echo '	for(var i = 0; i < els.length; i++) {' >> "${output_path}"
+	echo '		var fetch_uri = els[i].getAttribute("href");' >> "${output_path}"
+	echo '		' >> "${output_path}"
+	echo '		(function(el) {' >> "${output_path}"
+	echo '			fetch(fetch_uri)' >> "${output_path}"
+	echo '			  .then(response => {' >> "${output_path}"
+	echo '			    return response.text()' >> "${output_path}"
+	echo '			  })' >> "${output_path}"
+	echo '			  .then(data => {' >> "${output_path}"
+	echo '			    el.innerHTML = data;' >> "${output_path}"
+	echo '			  });' >> "${output_path}"
+	echo '		})(els[i]);' >> "${output_path}"
+	echo '	}' >> "${output_path}"
+	echo '});' >> "${output_path}"
+
+	echo '</script>' >> "${output_path}"
+
+With that, we're done with the while loop that renders all the template files.
+
+---
+
+## Static Files
+
+Finding and copying our static files across is plenty simple, and only a few lines:
+
+	# Find and copy non-templated files to the right places...
+	all_files="$(mktemp)"
+	find "$site_dir" -type f | sort > "${all_files}"
+
+	extra_files="$(mktemp)"
+	comm -13 "${file_list}" "${all_files}" | sort > "${extra_files}"
+
+	while read -r line; do
+		# Remove the site_dir...
+		base_path="$(echo "${line}" | sed 's/\(.\{'"${site_dir_length}"'\}\)//')"
+		# Set the output path...
+		output_path="$(echo "${build_dir}${base_path}")"
+
+		# Copy the file
+		cp "$line" "$output_path"
+	done < "$extra_files"
+
+We find all the files (remember I mentioned there was a race condition earlier? This is where it'll rear it's ugly head). Then we compare to see what files we've expanded, and which we ignored, and then we copy them to the right places.
+
+There's probably some directory-exists checking we should be doing, but whatever.
+
+---
+
+## Navigation
+
+No static generator should be without navigation. In point of fact, that's why we created that `include` hack earlier.
+
+	# Create navigation...
+	if [ -r "${site_dir}"/navigation.html ]; then
+		# Do nothing already copied user-specified navigation.
+		:
+	else
+		# Generate some navigation...
+		toc_files="$(mktemp)"
+		find "${build_dir}" -name '*.html' | sort > "${toc_files}"
+
+		toc_file="$(mktemp)"
+		echo '<navigation><ul>' > "$toc_file"
+
+		while read -r line; do
+			# Remove the build_dir...
+			base_path="$(echo "${line}" | sed 's/\(.\{'"${build_dir_length}"'\}\)//')"
+			link_path="$(echo "${base_url}${base_path:1:-10}")"
+
+			if [ "$link_path" = '/' ]; then
+				link_name='Home'
+			else
+				link_name="$(basename "${link_path}" \
+				  `# Title case the name:`\
+				  | awk 'BEGIN{split("a the to at in on with and but or",w); for(i in w)nocap[w[i]]}function cap(word){return toupper(substr(word,1,1)) tolower(substr(word,2))}{for(i=1;i<=NF;++i){printf "%s%s",(i==1||i==NF||!(tolower($i) in nocap)?cap($i):tolower($i)),(i==NF?"\n":" ")}}' \
+			  	)"
+			fi
+
+			echo "<li><a href='${link_path}'>${link_name}</a></li>" >> "${toc_file}"
+		done < "$toc_files"
+		echo '</ul></navigation>' >> "${toc_file}"
+		# Push our navigation include...
+		mv "${toc_file}" "${build_dir}/navigation.html"
+	fi
+
+Oof. That's a bit to toss up all at once, mostly the awk line that is incomprehensible madness.
+
+Okay... So we:
+
+1. Check if the user has already supplied a navigation file, in which case, do nothing. It's already been copied, and we don't want to touch it if they've decided they want something else.
+
+2. If we're going to be building our own navigation, we'll find all the HTML files that exist to both support static pages and templated files.
+
+3. Begin the creation of the navigation file. We'll stick an unnumbered list inside a `navigation` element, and let the user style that however they feel like. It's a pretty normal approach.
+
+4. This is where things get hairy.
+
+* If the root route is `/`, call it 'Home' instead of whatever. (This should probably be a config value, thinking about it.)
+
+* Otherwise, get the basename of the file, and then use awk to title case it. That is, `hello world amazing` becomes `Hello World Amazing`. This one liner won't always behave as expected, but most of the time it will. It's actually not that illegiible if you know Awk as a language, but if you don't... Your eyes glazed over the moment you saw it.
+
+5. Emit the link into the navigation file.
+
+---
+
+## Cleanup
+
+We've actually left a few temporary files around for comparison throughout. They need to die:
+
+	# Cleanup
+	rm "${file_list}"
+	rm "${all_files}"
+	rm "${toc_files}"
+
+---
+
+## Fin
+
+Aaaand... We're done. In just over 130LOC, with whitespace and comments. I'm sure you could codegolf it down into something ridiculously little, but we're not in a competition. Keeping it readable makes it easier to extend.
+
+You can now generate all sorts of insanity, with your tiny little tool that is hideous to behold... But there is every chance you know every part of the script and how it works, so you can tweak it to work exactly the way you want it to.
+
+You can now extend it in all sorts of ways _because_ you understand it.
+
+Things like:
+
+* Replace the config file with another format. Like say... INI. (Here's my [INI shell parser](https://git.sr.ht/~shakna/minini/)).
+
+* Replace the call to `pandoc` with something else. Like say... The original [markdown.pl](https://daringfireball.net/projects/markdown/) or to keep it in shell [this Bash script](https://github.com/chadbraunduin/markdown.bash/).
+
+* Recurse over template files, supplying them a function, to handle `include`s, rather than using JavaScript.
+
+* If you still want the JavaScript style `include`, it should probably be using [`document.importNode`](https://developer.mozilla.org/en-US/docs/Web/API/Document/importNode) instead of copying raw HTML that might include all sorts of violence.
+
+* We've hardcoded a couple things like `Home`, which should probably be configurable.
+
+* You should be able to get rid of the reliance on `awk` by implementing a title-case function in shell.
+
+* You could probably speed up builds by using `diff` instead of blowing up the build directory each time.
+
+]]
+
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
