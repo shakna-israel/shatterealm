@@ -27,7 +27,8 @@ for item in data['results']:
 		if event['event_type'] == ['comment']:
 			comment = event['comment']
 
-			payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
+			if comment['text'].strip() != '[deleted]':
+				payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
 
 	while thread_events['next'] != None:
 		r2 = requests.get('https://todo.sr.ht/api/user/~shakna/trackers/shatterealm/tickets/{}/events?start={}'.format(item['id'], thread_events['next']), headers=headers)
@@ -37,7 +38,8 @@ for item in data['results']:
 			if event['event_type'] == ['comment']:
 				comment = event['comment']
 
-				payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
+				if comment['text'].strip() != '[deleted]':
+					payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
 
 # Ensure we get all data...
 while data['next'] != None:
@@ -56,7 +58,8 @@ while data['next'] != None:
 			if event['event_type'] == ['comment']:
 				comment = event['comment']
 
-				payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
+				if comment['text'].strip() != '[deleted]':
+					payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
 
 		while thread_events['next'] != None:
 			r2 = requests.get('https://todo.sr.ht/api/user/~shakna/trackers/shatterealm/tickets/{}/events?start={}'.format(item['id'], thread_events['next']), headers=headers)
@@ -66,7 +69,8 @@ while data['next'] != None:
 				if event['event_type'] == ['comment']:
 					comment = event['comment']
 
-					payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
+					if comment['text'].strip() != '[deleted]':
+						payload[item['title']].append({"user": comment['submitter']['canonical_name'], "content": comment['text']})
 
 with open('_build/comments.json', "w+") as openFile:
 	openFile.write(json.dumps(payload))
