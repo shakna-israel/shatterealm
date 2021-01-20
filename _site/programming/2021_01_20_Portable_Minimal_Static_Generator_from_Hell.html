@@ -186,7 +186,7 @@ The steps for this are clearly insane in almost every way that exists.
 
 1. Read in template file. Nothing to see here. (Well, a _maybe_ useless use-of-cat, but it really doesn't matter a single damn).
 
-2. We call `eval`, on the data from the template file. This is somewhat akin to massacring our entire family in a Herculean-style fit on insanity, as we just exposed out script and contents to the template file and allowed it to self-modify in any way it sees fit, but that's how we're choosing to expand the template.
+2. We call `eval`, on the data from the template file. This is somewhat akin to massacring our entire family in a [Herculean-style fit of insanity](https://en.wikipedia.org/wiki/Heracles#Labours_of_Heracles), as we just exposed out script and contents to the template file and allowed it to self-modify in any way it sees fit, but that's how we're choosing to expand the template.
 
 3. We toss the output of that eval call at pandoc, and tell it to convert from Markdown to HTML5, to our afore-decided path.
 
