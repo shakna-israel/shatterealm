@@ -6,13 +6,21 @@
 
 {%
 	local descriptor
-	if v.description then
-		descriptor = v.description
+	if v.description ~= config.description then
+		descriptor = v.description .. '...'
 	elseif v.value then
-		descriptor = v.value:sub(1, 50) .. '...'
+		if type(v.value) == 'string' then
+			descriptor = iformat(v.value:sub(1, 70) .. '...', _G)
+		elseif type(v.value) == 'table' then
+			descriptor = iformat(v.value[1]:sub(1, 70) .. '...', _G)
+		else
+			descriptor = v.name .. ' ' .. config.description .. '...'
+		end
 	else
-		descriptor = v.title or v.name or '...'
+		descriptor = config.description .. '...'
 	end
+
+	descriptor = descriptor:gsub('"', "")
 %}
 
 {% if v.directory then %}
