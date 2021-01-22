@@ -1,0 +1,243 @@
+{%
+	comment_id = '27'
+	subtitle = 'Python and Row Factories'
+	value = [==[Does the following code feel at all familiar?
+
+	for row in c.execute("SELECT name, class, age FROM students WHERE class > ?", (3,)):
+		value = {}
+		value['name'] = row[0]
+		value['class'] = row[1]
+		value['age'] = row[2]
+
+		students.append(value)
+
+If it does, then you're hitting one of my pet peeves with Python's DB API.
+
+In these sorts of cases you're basically duplicating your own efforts, and it isn't actually necessary at all. In point of fact, Python supports installing something called a _row factory_ against the DB to change the way you access data. This example comes from the [Python documentation for sqlite3](https://docs.python.org/3/library/sqlite3.html#accessing-columns-by-name-instead-of-by-index):
+
+	import sqlite3
+
+	con = sqlite3.connect(":memory:")
+	con.row_factory = sqlite3.Row
+
+	cur = con.cursor()
+	cur.execute("select 'John' as name, 42 as age")
+	for row in cur:
+	    assert row[0] == row["name"]
+	    assert row["name"] == row["nAmE"]
+	    assert row[1] == row["age"]
+	    assert row[1] == row["AgE"]
+
+	con.close()
+
+Here, Python even supplies their own row factory, so that you can access by both index, and case-insensitive strings. If it weren't for the case-insensitivity, I would argue that this should be a default, rather than something the programmer should be responsible for adding.
+
+Unfortunately, I do sort of find that case-insensitivity untenable for a _generic_ database connection. If we're talking about the DB API, it shouldn't make that sort of assumption.
+
+---
+
+## Row Factory
+
+Thus, I wrote my own factory, and a class wrapper, to get around some of these warts whilst _attempting_ to remain as unopinionated as is possible.
+
+To start off with, we need to know what goes into making a factory, but thankfully the documentation makes that abundantly clear:
+
+	import sqlite3
+
+	def dict_factory(cursor, row):
+	    d = {}
+	    for idx, col in enumerate(cursor.description):
+	        d[col[0]] = row[idx]
+	    return d
+
+	con = sqlite3.connect(":memory:")
+	con.row_factory = dict_factory
+	cur = con.cursor()
+	cur.execute("select 1 as a")
+	print(cur.fetchone()["a"])
+
+	con.close()
+
+It turns out that Python guarantees that `cursor.description` holds everything that the programmer usually wants to know, it just doesn't normally expose it:
+
+> This read-only attribute provides the column names of the last query.
+
+You could just be satisfied by returning a dictionary instead, but that _will_ break any code that relies on indexing. The simplest way around that, is instead of using a dictionary, you could use a named-tuple. This would instead let us access keys in two ways, by index or `attribute`.
+
+However, accessing by attribute (e.g. `row[0] == row.name`) isn't always desirable. We want to be unopinionated and that means letting whitespace into our column names. (e.g. `row[0] == getattr(row, "Class Name")`). Which isn't as nice.
+
+Thankfully, overriding Python default behaviour is trivial, and we can make it so that we can access by index, attribute, _and_ by string, rather easily.
+
+	import collections
+
+	def dict_factory(cursor, row):
+		"""This factory lets us access by index, string, or attribute.
+		e.g. row[0] == row['item'] == row.item
+		"""
+
+		keys = []
+
+		d = {}
+		for idx, col in enumerate(cursor.description):
+			keys.append(col[0])
+			d[col[0]] = row[idx]
+
+		def row_getitem(self, index):
+			try:
+				# Try numbered index first...
+				return self.oldgetitem(index)
+			except TypeError:
+				try:
+					# Probably a string key, try and get it...
+					return getattr(self, index)
+				except AttributeError:
+					# Raise a KeyError, which feels Pythonic dict-like and intuitive
+					raise KeyError
+				except TypeError:
+					# Raise a KeyError, which feels Pythonic dict-like and intuitive
+					raise KeyError
+			except IndexError:
+				# Raise a KeyError for consistency.
+				raise KeyError
+
+		R = collections.namedtuple('Row', keys)
+		R.oldgetitem = R.__getitem__
+		R.__getitem__ = row_getitem
+
+		ret = R(**d)
+
+		return ret
+
+This little row factory lets us access by all three methods, and when you access something that doesn't exist, you'll be hit by a `KeyError`, which though opinionated, feels rather Pythonic.
+
+And now we can do:
+
+	for row in c.execute("SELECT name, class, age FROM students WHERE class > ?", (3,)):
+		students.append(row)
+
+Or even:
+
+	for row in c.execute("SELECT * FROM students WHERE class > ?", (3,)):
+		students.append(row)
+
+And we'll get a key-able value out of it.
+
+However, if we're already changing the way rows behave to feel more modern and simpler, maybe we should look at the database object itself, as well.
+
+---
+
+## Database
+
+There are three things I would generally want my database object to do:
+
+1. Use our row factory. Unless I want to use another row factory.
+
+2. Automatically commit and close the connection when it gets deleted, so I don't need to mess around with context managers. I have a garbage collector - why not use it? (This one is fairly opinionated - some people won't want the commit aspect).
+
+3. If I try and access the database object and discover the attribute is only cursor-accessible, I want it to use the underlying cursor! I don't want to have to manage the cursors myself. (This one is very opinionated. The `sqlite3` library already does this to some extent, but it isn't required by the DB API).
+
+Thus, we end up with a class that takes the library that matches the DB API and returns us an object that does all of that incredibly simply.
+
+First up - let the GC handle commit and close for us. That's easy enough, Python lets us do non-deterministic things in the destructor (including raising exceptions):
+
+	def __del__(self):
+		# Auto-commit DB in closing...
+		self.db.commit()
+		self.db.close()
+
+We'll also need to override the way our class gets attributes, to look first at itself (for any methods we define/override), then to the DB object, and then to a cursor object:
+
+	def __getattr__(self, *args, **kwargs):
+		"""Defers to underlying DB object, and then to cursor, if the method doesn't exist."""
+		try:
+			return self.__getattribute__(*args, **kwargs)
+		except AttributeError:
+			try:
+				return getattr(self.db, *args, **kwargs)
+			except AttributeError:
+				c = self.db.cursor()
+				return getattr(c, *args, **kwargs)
+
+Python having both `__getattr__` and `__getattribute__` becomes a saving grace for us here, simplifying our code at the expense of becoming non-intuitive for anyone trying to piece together how it works. Basically, `getattr`, the attribute accessor, will check the short name first, and if it isn't defined, check the long name, but both are defined when you inherit from `object`. Thus, we don't need to copy the default behaviour anywhere before we create our override.
+
+Altogether, our very simple class looks like:
+
+	class Database(object):
+		def __init__(self, sql_engine, path, row_factory=None, *args, **kwargs):
+			self.db = sql_engine.connect(path, *args, **kwargs)
+			if row_factory == None:
+				self.db.row_factory = dict_factory
+
+		def execute(self, *args, **kwargs):
+			"""Opens a new cursor and runs an execute"""
+			c = self.db.cursor()
+			return c.execute(*args, **kwargs)
+
+		def executemany(self, *args, **kwargs):
+			"""Opens a new cursor and runs an executemany"""
+			c = self.db.cursor()
+			return c.executemany(*args, **kwargs)
+
+		def __getattr__(self, *args, **kwargs):
+			"""Defers to underlying DB object, and then to cursor, if the method doesn't exist."""
+			try:
+				return self.__getattribute__(*args, **kwargs)
+			except AttributeError:
+				try:
+					return getattr(self.db, *args, **kwargs)
+				except AttributeError:
+					c = self.db.cursor()
+					return getattr(c, *args, **kwargs)
+
+		def __del__(self):
+			# Auto-commit DB in closing...
+			self.db.commit()
+			self.db.close()
+
+## Summing Up
+
+Taken together, the `class` and the `dict_factory` we made earlier are a mostly backwards-compatible interface to the DB API, but now we don't have to repeat ourselves when moving between SQL and Python.
+
+So simple in fact, that the [single-file library](https://git.sr.ht/~shakna/shaknas_database_py) is less than 80 LOC.
+
+But will let us do things like:
+
+	import sqlite3
+	import database
+
+	# Pass the underlying driver to the initialiser...
+	db = database.Database(sqlite3, "data.db")
+
+	db.execute("""CREATE TABLE IF NOT EXISTS "comments" (
+		"thread"	BLOB NOT NULL,
+		"content"	BLOB NOT NULL,
+		"username"	BLOB NOT NULL,
+		"time"	REAL NOT NULL
+	);""")
+
+	for row in db.execute("SELECT * from comments"):
+		print(row)
+
+		# Access by index
+		print(row[1])
+
+		# Access by attribute
+		print(row.content)
+
+		# Access by string
+		print(row['content'])
+
+		# Access non-existent values
+		try:
+			row['nope!']
+		except KeyError:
+			pass
+
+	# Transparently access cursor attributes
+	print(db.connection)
+
+	# No explicit close/commit. Let the GC handle things!
+]==]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
