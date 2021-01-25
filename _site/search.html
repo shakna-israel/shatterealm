@@ -1,0 +1,110 @@
+{%
+	title = "Search"
+%}
+{{ include(site_directory .. '/header.tpl', {title=title}) }}
+
+<noscript>
+	<p>Sorry, the search page requires JavaScript, which appears to be disabled.</p>
+	<p>You might have better luck looking <a href="{{(base_url or '/') .. 'all.html'}}">here</a> instead.</p>
+</noscript>
+
+<input id="search" />
+
+<ul id="results"></ul>
+
+<script src="https://unpkg.com/lunr/lunr.js"></script>
+<script>
+window.addEventListener('load', function() \{
+	var documents = [];
+
+	{% for index, v in pairs(toc) do %}
+
+	{% if v.name ~= "All Posts" then %}
+
+	{%
+		local descriptor
+		if v.description ~= config.description then
+			descriptor = v.description .. '...'
+		elseif v.value then
+			if type(v.value) == 'string' then
+				descriptor = iformat(v.value .. '...', _G)
+			elseif type(v.value) == 'table' then
+				descriptor = iformat(v.value[1] .. '...', _G)
+			else
+				descriptor = v.name .. ' ' .. config.description .. '...'
+			end
+		else
+			descriptor = config.description .. '...'
+		end
+
+		descriptor = descriptor:gsub('"', "''")
+		descriptor = descriptor:gsub(("").char(10), ' ')
+
+		local short_descriptor = descriptor:sub(1, 70)
+	%}
+
+	{% if v.directory then %}
+	{%
+		local last_num = v.sortname:match('^.*()%d')
+		local date_section = v.sortname:sub(1, last_num)
+		local word_section = v.title or v.subtitle or v.sortname:sub(last_num + 1)
+
+		date_section = date_section:gsub(" ", "-")
+
+		local name = word_section .. ' [' .. v.directory .. ']' .. ' (' .. date_section .. ')'
+	%}
+
+		documents.push(\{"name": "{{name}}", "path":"{{v.path}}", "text":"{{descriptor}}", "short":"{{short_descriptor}}"\});
+
+	{% else %}
+
+		documents.push(\{"name":"{{v.name}}", "path":"{{v.path}}", "text": "{{descriptor}}", "short":"{{short_descriptor}}"\});
+
+	{% end %}
+	{% end %}
+
+	{% end %}
+
+	var idx = lunr(function () \{
+		this.ref('path')
+		this.field('name')
+		this.field('text')
+
+		documents.forEach(function (doc) \{
+			this.add(doc)
+			\}, this)
+	\});
+
+	window.idx = idx;
+	window.documents = documents;
+
+	document.getElementById('search').addEventListener('input', function() \{
+		var arr = window.idx.search(this.value);
+
+		var doc_el = document.getElementById('results');
+		doc_el.innerHTML = '';
+
+		for(var i = 0; i < arr.length; i++) \{
+			var tmp_container = document.createElement('li');
+			var tmp = document.createElement('a');
+			var tmp_child = document.createElement('small');
+
+			for(var di = 0; di < window.documents.length; di++) \{
+				if(arr[i].ref == window.documents[di].path) \{
+					tmp.textContent = window.documents[di].name;
+					tmp.href = window.documents[di].path;
+					tmp_child.textContent = window.documents[di].short;
+				\}
+			\}
+
+			tmp_container.appendChild(tmp);
+			tmp_container.appendChild(document.createElement('br'));
+			tmp_container.appendChild(tmp_child);
+			doc_el.appendChild(tmp_container);
+		\}
+	\});
+
+\});
+</script>
+
+{{ include(site_directory .. '/footer.tpl') }}
