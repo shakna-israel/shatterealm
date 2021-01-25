@@ -42,7 +42,7 @@
 </li>
 {% end %}
 
-{% if index == 8 then %}
+{% if index == 7 then %}
 <details>
 <summary>More</summary>
 {% end %}
@@ -50,7 +50,7 @@
 {% end %}
 {% end %}
 
-{% if #toc > 7 then %}
+{% if #toc > 6 then %}
 </details>
 {% end %}
 
