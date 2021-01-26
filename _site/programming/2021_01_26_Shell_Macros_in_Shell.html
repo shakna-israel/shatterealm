@@ -1,0 +1,90 @@
+{%
+	subtitle = 'sheitscript - Shell Macros in Shell'
+	value = [==[Who doesn't love awful things in programming?
+
+Here for another round of "Oh hell, what has he done this time!?" we have [sheitscript](https://git.sr.ht/~shakna/sheitscript)!
+
+---
+
+## The Idea
+
+Macros tend to be incredibly useful. Shell scripting tends to be fairly useful, if used in the right place and the right time.
+
+What if, we gave shell scripting macros? And let it be its own macro engine?
+
+That sounds downright horrible.
+
+Let's do it!
+
+---
+
+## The Implementation
+
+It took me a total of three minutes to go from first idea to full implementation, so we're not going to spend a lot of time here, I'm afraid.
+
+The entirety of the implementation is:
+
+	#!/bin/sh
+
+	tmpfile="$(mktemp)"
+	tmpfile2="$(mktemp)"
+	cp "$1" "${tmpfile}"
+
+	. "${tmpfile}" > "${tmpfile2}" 2>/dev/null
+	while [ "$?" -eq 0 ]; do
+		cp "${tmpfile2}" "${tmpfile}"
+		. "${tmpfile}" > "${tmpfile2}" 2>/dev/null
+	done
+
+	cat "${tmpfile}"
+
+	rm "${tmpfile}" "${tmpfile2}"
+
+Tada!
+
+Basically, continually try and run the scripting file, copying over the resulting output until it errors out, and then output the last non-error `stdout`.
+
+There are a couple caveats:
+
+* We lose the ability to see `stderr` with this implementation
+
+* Shell scripts _can_ actually self-modify. It might be possible to introduce an infinite loop in the above, even by accident.
+
+* We're intentionally sourcing, rather than forking into a new shell. This is _unhygenic_, when it comes to macros. This is also on purpose. It means you can propogate functions and values through rounds of expansion to do all sorts of horrifying things.
+
+---
+
+## Basic Usage
+
+We'll start off with something simple.
+
+Because we have multiple layers, we can write something like:
+
+	echo 'echo "Hello, World!"'
+
+And we'll get the output
+
+	Hello, World!
+
+Well, that was interesting. And boring. Lets take it further!
+
+Baby steps first:
+
+	val="echo 'Hello, World!'"
+	echo "$val"
+
+Which, of course, outputs the same.
+
+	val='echo "$msg"'
+	echo "$val"
+	msg='Hello, World!'
+
+Here, we define our `$msg` _last_, but it'll get passed to the next round of the expansion, and so we still get the expected output.
+
+Obviously you can do far more complicated and evil things, but you'll need to make sure that the script has the right exit status to continue processing each time. And well... This is an awful idea.
+
+If you truly feel the need to continue the exploration... Let me know, below!
+]==]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}

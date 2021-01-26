@@ -1,6 +1,10 @@
 <footer>
 <hr />
 <ul>
+{%
+	local index_number = 8
+%}
+
 {% for index, v in pairs(toc) do %}
 {% if v.name ~= "All Posts" then %}
 
@@ -42,7 +46,7 @@
 </li>
 {% end %}
 
-{% if index == 7 then %}
+{% if index == index_number then %}
 <details>
 <summary>More</summary>
 {% end %}
@@ -50,7 +54,7 @@
 {% end %}
 {% end %}
 
-{% if #toc > 6 then %}
+{% if #toc > (index_number - 1) then %}
 </details>
 {% end %}
 
