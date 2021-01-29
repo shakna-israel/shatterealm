@@ -5,7 +5,7 @@
 
 I maintain a contract library for Lua that is _highly_ flexible called [jcontract](https://git.sr.ht/~shakna/jcontract), which comes with a bunch of goodies that will make it a little more obvious about what I mean.
 
-For this post we're going to jump in an explore how this works... Before re-implementing it in Python.
+For this post we're going to jump in and explore how this works... Before re-implementing it in Python.
 
 ---
 
@@ -453,6 +453,15 @@ Now, when we're catching exceptions we can do something like:
 ## The Code
 
 You can find a complete implementation of the Python library we just implemented over [here](https://git.sr.ht/~shakna/jcontract_py).
+
+In it, I've written up all the expected type specifiers from the Lua library.
+
+I have _also_ written a special decorator that uses Python's `inspect` module to attempt to create the contract from the given signature. This lets you do this kind of magic:
+
+	@contract.auto
+	def thing(x: str, y: int, z) -> bool:
+		return True
+
 
 ]===]
 %}
