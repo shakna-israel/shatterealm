@@ -1,0 +1,459 @@
+{%
+	subtitle = 'Runtime Contracts'
+	value = [===[A runtime contract library can be thought of as a way to specify typing control at runtime. However, if you do that, you sort of miss the opportunity for the kind of safety that they can bring.
+
+I maintain a contract library for Lua that is _highly_ flexible called [jcontract](https://git.sr.ht/~shakna/jcontract), which comes with a bunch of goodies that will make it a little more obvious about what I mean.
+
+For this post we're going to jump in an explore how this works... Before re-implementing it in Python.
+
+---
+
+First up, here's a quick demonstration of doing something obvious:
+
+	local contract = require "jcontract"
+
+	local double_it = contract.contract(contract.Integer(), {contract.Integer()},
+		function(x)
+			return 2 * x
+		end)
+
+The contract guarantees the return of an integer, when given an integer. If it doesn't get one, it'll call out to `contract.collapse` to handle things, which in the default case will raise an assertion.
+
+Quick Note: the signature of a `contract.contract` is basically: `contract.contract(return_specifier, {argument_specifiers...}, function_to_wrap)`.
+
+However, we're operating at _runtime_. Which means that our type specifiers actually have a whole heap of information available to them which they wouldn't in the general case at compile time. Which means, of course, that you can have composite types (types that combine one or more features from other types) that are called Algebraic Data Types.
+
+jcontract includes `contract.Union(TypeSpecifier_A, TypeSpecifier_B)` as part of the standard set of specifiers, so it makes it easy for us. So we'll go ahead and specifier a contract around `tonumber` that matches the standard behaviour in Lua:
+
+	local numType = contract.Union(contract.Integer(), contract.Float())
+
+	local numOrNil = contract.Union(numType, contract.Nil())
+
+	local stringOrNum = contract.Union(contract.String(), numType)
+
+	local baseType = contract.Union(contract.IntRange(2, 36), contract.Nil())
+
+	local tonumber = contract.contract(numOrNil,
+		{stringOrNum, baseType},
+		tonumber)
+
+Phew. The flexibility of `tonumber` can make the exact contracts a bit wordy. However, even though it can take a lot of things, we can specify some exactness that wouldn't be expected in the normal, whilst specifying the exact same behaviour - building in our guarantees.
+
+And, of course, if you want tonumber to not return `nil` like it usually can, and instead raise an assertion, you only need modify the contract.
+
+Note that we were able to include the specifiers that we were building inside each other - that's the power of Algebraic Data Types at work. We built up several of our specifiers by creating common behaviour that we could re-use.
+
+We were also able to check the range of the base-type being passed to `tonumber`, which is something that can only rarely be done at compile time, but as it is something you _can_ observe at runtime, we can write a contract for it.
+
+In point of fact, you can write a contract completely from scratch to check any kind of property, pretty trivially:
+
+	local contract = require "jcontract"
+
+	local MyTypeSpecifier = function()
+	  return function(x, kind)
+	    local r = contract.collapse(type(x.name) == "string",
+	    	"MyType<ContractViolation>: Name should be a string")
+
+	    if r ~= nil then return r end
+	  end
+	end
+
+	local set_name = contract.contract(MyTypeSpecifier(), {MyTypeSpecifier()}, function(x)
+		x.name = "Hello"
+		return x
+	end)
+
+The heavy lifting is done by `contract.collapse(bool, message)`. We create a function, that when called returns another function that contains the actual type-checking, and now we have a type specifier that follows the exact same API as the rest of the library.
+
+---
+
+## jcontract Internals
+
+Now that we've got a quick taste for it working, to port it to Python we'll need at least a rough idea of how it works internally. Luckily, most of the implementation is in the provided type specifiers. The actual work done by a contract is relatively little.
+
+We'll need a general grasp of it because Python is rather different than Lua in some of the things you can do, and can't do. The expected behaviour is different as well. Our reimplementation won't be an exact port.
+
+There are two moving parts:
+
+* `contract.collapse`
+
+* `contract.contract`
+
+All the rest are just type specifiers that should be trivial to implement and test once these two things are in place.
+
+	r['collapse'] = function(boolean, message)
+		assert(boolean, message)
+	end
+
+Turns out, I just wrapped `assert` here. We do want something _other_ than `assert`, so that the programmer can override it if they want to - and because to test the library you probably want to override it too.
+
+The contract constructor is only very slightly more complicated.
+
+	r['contract'] = function(returnType, argumentTypes, f)
+		return function(...)
+		  local args = {...}
+
+		  local check = nil
+
+		  -- Check we have the right number of arguments
+		  check = r['collapse'](#argumentTypes == #args, string.format("ContractViolation: Wrong number of arguments supplied. Expected %s, received %s.",
+		  	#argumentTypes,
+		  	#args))
+		  if check ~= nil then return check end
+
+		  for idx, arg in ipairs(args) do
+		  	check = argumentTypes[idx](arg, "argument")
+		  	-- Return here, in case collapse is overridden to return
+		  	if check ~= nil then return check end
+		  end
+
+		  local v = f(...)
+
+		  check = returnType(v, "return")
+		  -- Return here, in case collapse is overridden to return
+		  if check ~= nil then return check end
+
+		  return v
+		end
+	end
+
+That might be a bit much all at once.
+
+To break it down, our intention is to return a variadic function that will check the given values and return type, and call the original function with those values. We're just wrapping the original function.
+
+	check = r['collapse'](#argumentTypes == #args, string.format("ContractViolation: Wrong number of arguments supplied. Expected %s, received %s.",
+		  	#argumentTypes,
+		  	#args))
+		  if check ~= nil then return check end
+
+We toss the expected length of arguments, and the actual length of arguments, against each other into `collapse`.
+
+`collapse` always returns `nil` in the default case, but if it doesn't, then the behaviour has been overridden, such as for testing. If it has been overridden, we should return the value it gave us.
+
+Next, we check the types of each argument our function was given:
+
+	for idx, arg in ipairs(args) do
+	  	check = argumentTypes[idx](arg, "argument")
+	  	
+	  	if check ~= nil then return check end
+	end
+
+Each of the `argumentTypes` items is expected to call `collapse`, so again, we need to check the return for if the default behaviour is overridden. We give the function the argument, and we tell it that it is an argument, to match the `function(object, kind)` signature that we saw being used as the returned function from specifiers above.
+
+Finally we need to check the return type out, by actually running it:
+
+	local v = f(...)
+
+	check = returnType(v, "return")
+
+	if check ~= nil then return check end
+
+	return v
+
+And with that, we're done!
+
+All the other work is about constructing type specifiers, which is dead simple. For a quick example, here's the Boolean check:
+
+	r['Boolean'] = function()
+		return function(x, kind)
+		  local ret = nil
+		  ret = r['collapse'](type(x) == 'boolean',
+		  	string.format("Boolean<TypeViolation>: Expected boolean, received: %s",
+		  	type(x)))
+
+		  if ret ~= nil then return ret end
+		end
+	end
+
+---
+
+## Towards a Python Implementation
+
+We need to make some choices when it comes to a Python implementation, that we wouldn't in a Lua one.
+
+Firstly, Python has some shorthand that vaguely resembles the way we wrap functions, called decorators. It seems like a no-brainer to make use of that for constructing our library.
+
+So we're hoping that at the end we can have something like:
+
+	import contract
+
+	@contract.contract(contract.Integer(), [contract.Integer()])
+	def double_it(x):
+		return x * 2
+
+It looks a little bit cleaner than the Lua version, and it still looks "Pythonic".
+
+Which is where we hit the second little snag. How "Pythonic" do we want the library to actually be? Python doesn't tend to return even on failure. It doesn't hand the programmer back a `None` and tell them to react accordingly. Instead of raising errors only in exceptional circumstances like Lua, Python raises exceptions all over the place.
+
+To the point where knowing all the exceptions that can be raised by a particular chunk of code [isn't even well documented](https://shatterealm.netlify.app/programming/2021_01_02_breaking_pythons_json_parser).
+
+Presumably, we want to be able to raise contracts violations as Exceptions. But the question becomes, do we want to `catch` exceptions as well? So that we can change our decorator to something like:
+
+	import contract
+
+	@contract.contract(contract.Integer(), [contract.Integer()], raises=[ValueError])
+	def double_it(x):
+		return x * 2
+
+Any other Exception raised would become part of the contract violation exception, and simplify the programmer's life considerably. However, if we were to do that, we need to be aware that the Python ecosystem has a [long list of exceptions that it expects can be raised everywhere](https://docs.python.org/3/library/exceptions.html#concrete-exceptions), some of which we _really_ do _not_ want to catch, like `StopIteration`.
+
+So, for now, we'll leave it as an exercise to the reader to decide if they want to catch exceptions as well. It shouldn't be _too_ difficult to shim into what we're going to construct.
+
+---
+
+## A Python `collapse`
+
+First things first, let's get the `collapse` function out of the way.
+
+To be Pythonic, we'll get it to raise an exception of our own. A contract exception.
+
+	def collapse(boolean, kind):
+		if boolean == False:
+			raise ContractException(kind)
+		else:
+			return None
+
+We keep the behaviour of returning `None`, so that the programmer can easily override `collapse` for testing, etc.
+
+But, we do need to also now implement our new exception object:
+
+	class ContractException(Exception):
+	def __init__(self, kind):
+		super().__init__("{}".format(kind))
+
+This too, is an opinionated design. You might choose to refer to `TypeError` or `ValueError`, etc. instead of the `Exception` class. We're just keeping things simple, so that contracts can be caught be exception handlers for ours alone.
+
+---
+
+## A Word on Decorators
+
+A quick word on Python decorators. They might look all fancy, but they are nothing more than what we were doing in Lua.
+
+They are a function that returns a function. Nothing more.
+
+This piece of code...
+
+	def my_decorator(func):
+	    def wrapper():
+	        print("Wrapped!")
+	        return func()
+	    return wrapper
+
+	def thing():
+		print("Called my thing.")
+
+	thing = my_decorator(thing)
+
+Is equivalent to this piece of code...
+
+	def my_decorator(func):
+	    def wrapper():
+	        print("Wrapped!")
+	        return func()
+	    return wrapper
+
+	@my_decorator
+	def thing():
+		print("Called my thing.")
+
+The only real different to the Lua code is that Python doesn't have anonymous functions.
+
+---
+
+## A Python `contract`
+
+With the idea of a decorator in mind, we start out with this little bit of code:
+
+	import functools
+
+	def contract(returnType, argumentTypes):
+		def func_wrapper(func):
+			@functools.wraps(func)
+			def contract_wrap(*args, **kwargs):
+				# TODO
+				pass
+			return contract_wrap
+		return func_wrapper
+
+It is a lot more wordy than the Lua equivalent, and a tiny bit convoluted, that that's because we want to pass in some arguments.
+
+Note: The functools decorator there just helps the resulting function keep its own identity for Python's `__name__` features and so on.
+
+We'll still be placing all our logic at that `TODO` comment. The rest is just the general architecture that Python requires for the way we want this to work.
+
+First up! We need to check the number of arguments out.
+
+	check = collapse(len(argumentTypes) == (len(args) + len(kwargs)),
+					"ContractViolation: Wrong number of arguments supplied. Expected {}, received {}.".format(
+						len(argumentTypes), (len(args) + len(kwargs))))
+	if check != None:
+		return check
+
+Python doesn't give us straight arrays of arguments for our variadic functions, it seperates the positional and key-word arguments, so we need to check their lengths together.
+
+Which also means we should go back and make things easier on ourselves by tweaking the way we define the `contract`:
+
+	def contract(returnType, argumentTypes=[], keywordArgumentTypes={}):
+
+Now, we need to rewrite our check:
+
+	# Get lengths of arguments...
+	check = collapse((len(argumentTypes) + len(keywordArgumentTypes)) == (len(args) + len(kwargs)),
+		"ContractViolation: Wrong number of arguments supplied. Expected {}, received {}.".format(
+			len(argumentTypes) + len(keywordArgumentTypes), len(args) + len(kwargs)))
+	if check != None:
+		return check
+
+Moving on, we can check the type specifiers of each of our positional arguments:
+
+	# Check positional
+	for idx, arg in enumerate(args):
+		try:
+			check = argumentTypes[idx](arg, "argument")
+			if check != None:
+				return check
+
+		except IndexError:
+			check = collapse(False,
+				"ContractViolation: Wrong number of positional arguments supplied. Expected {}, received {}.".format(
+					len(argumentTypes), len(args)))
+			if check != None:
+				return check
+
+It's very nearly identical to our Lua code. However, because we checked altogether lengths earlier, there is a possibility of trying to access a type specifier that doesn't exist. In which case we can be more precise in our error message to collapse, that this is only about _positional_ arguments.
+
+Now we can run our check against any keyword arguments:
+
+	# Check keyword
+	for key, value in kwargs.items():
+		try:
+			check = keywordArgumentTypes[key](value, "keyword argument")
+			if check != None:
+				return check
+		except KeyError:
+			check = collapse(False,
+				"ContractViolation: Unexpected keyword argument suppled. {}".format(key))
+			if check != None:
+				return check
+
+Again, we need to make sure that the key being tested for is actually expected by our type specifiers. But it isn't too different from the way things are happening in the positional check.
+
+	# Check the result
+	v = func(*args, **kwargs)
+
+	check = returnType(v, "return")
+	if check != None:
+		return check
+
+	# All checks passed!
+	return v
+
+Finally! We can run the actual function, and call the specifier check against it.
+
+That's an end to our implementation of `contract`.
+
+All the actual work has been offloaded to the specifiers, which have an expected signature, so that it is easy for the user to implement them.
+
+---
+
+## A Couple of Specifiers
+
+If we left the library as-is, it probably wouldn't take long to work out how to implement the specifiers, but it would be irritating because the library would be fairly useless.
+
+So let's build a couple.
+
+	def Integer():
+		def IntegerSpecifier(obj, kind):
+			check = collapse(isinstance(obj, int),
+				"Integer<TypeViolation>: Specified value is not a number: ({})<{}>".format(obj, type(obj)))
+			if check != None:
+				return check
+
+			return None
+		return IntegerSpecifier
+
+There's a nice primitive type, and now let us build the range type specifier for the same:
+
+	def IntegerRange(mini, maxi):
+		def IntegerRangeSpecifier(obj, kind):
+			check = collapse(isinstance(mini, int),
+				"IntegerRange<TypeViolation>: Specified range start is not an integer: ({})<{}>".format(mini, type(mini)))
+			if check != None:
+				return check
+
+			check = collapse(isinstance(maxi, int),
+				"IntegerRange<TypeViolation>: Specified range end is not an integer: ({})<{}>".format(maxi, type(maxi)))
+			if check != None:
+				return check
+
+			# Reuse the Integer specifier here...
+			check = Integer()(obj, kind)
+			if check != None:
+				return check
+
+			check = collapse(obj > mini,
+				"IntegerRange<RangeViolation>: Specified value <{}> is too small. Expected value greater than <{}> on {}.".format(obj, mini, kind))
+			if check != None:
+				return check
+
+			check = collapse(obj < maxi,
+				"IntegerRange<RangeViolation>: Specified value <{}> is too large. Expected value less than <{}> on {}.".format(obj, maxi, kind))
+			if check != None:
+				return check
+
+			return None
+		return IntegerRangeSpecifier
+
+---
+
+## Better Exceptions
+
+We've built a single exception type, but as we can see in our `collapse`, we actually have a bunch of differing but-similar exceptions.
+
+What we should really do is intelligently subclass the exception, and tell `collapse` which one we want.
+
+	def collapse(boolean, kind, raises=ContractException):
+		if boolean == False:
+			raise raises(kind)
+		else:
+			return None
+
+There we go, nice and flexible!
+
+So we can add an exception, and re-define the specifier to use it without much fuss:
+
+	class IntegerTypeViolation(ContractException):
+		pass
+
+	def Integer():
+		def IntegerSpecifier(obj, kind):
+			check = collapse(isinstance(obj, int),
+				"Specified value is not an integer: ({})<{}> on {}".format(obj, type(obj), kind),
+				raises=IntegerTypeViolation)
+			if check != None:
+				return check
+
+			return None
+		return IntegerSpecifier
+
+Now, when we're catching exceptions we can do something like:
+
+	try:
+		func()
+	except IntegerTypeViolation:
+		# Handle integer problems...
+		pass
+	except ContractException:
+		# Handle all other contract problems...
+		pass
+
+---
+
+## The Code
+
+You can find a complete implementation of the Python library we just implemented over [here](https://git.sr.ht/~shakna/jcontract_py).
+
+]===]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
