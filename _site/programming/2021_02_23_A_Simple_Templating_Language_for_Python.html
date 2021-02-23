@@ -29,7 +29,7 @@ It's widespace agnostic, and fairly lisp-y. (Note that in the function call, you
 
 And the usage of the template is something like:
 
-	return Template(TEMPLATE_CONTENT, foo=foo, name='eric', last='moe', books={'Author': 'Title'}, rockit=True)
+	return Template().format(TEMPLATE_CONTENT, foo=foo, name='eric', last='moe', books={'Author': 'Title'}, rockit=True)
 
 The entire awful system is around 49LOC.
 
