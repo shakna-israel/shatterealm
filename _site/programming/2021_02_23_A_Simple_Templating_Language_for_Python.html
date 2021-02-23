@@ -181,6 +181,51 @@ This awful damn thing works, and is actually rather fast, thanks to being based 
 
 I haven't, and probably won't, split it out of my main project, but you can find the complete class code for it over [here](https://git.sr.ht/~shakna/jwsgi/tree/master/item/jwsgi.py#L21). Obey the license, and you can rip it out and into whatever you feel like.
 
+### Update: Swapping Values & Specification
+
+It turns out that a very simple tweak can let us make our simple template language a lot nicer to use.
+
+	My name is {foo:(name, last)}
+
+	<ul>
+	{foreach:books:<li>"{{item[1]}}" by {{item[0]}}</li>}
+	</ul>
+
+	{if:rockit:
+	<p>ROCK IT!</p>
+		:
+	<p>Don't rock it.</p>
+	}
+
+This is what we're going to accomplish. We're going to make it so that for if/foreach (and any future spec-like syntax), they come _before_ the value, so it reads more like a lisp, and less like... A bad DSL.
+
+	def parse(self, format_string):
+		t = super(Template, self).parse(format_string)
+		t = list(t)
+
+		for cell in t:
+			literal_text, field_name, format_spec, conversion = cell
+			if format_spec and format_spec.startswith('(') and format_spec.endswith(')'):
+				# We don't need to rearrange anything on a function call!
+				yield cell
+			elif not format_spec:
+				# No spec, make no changes!
+				yield cell
+			else:
+				# Invert field/spec, slicing as appropriate...
+				field_name = field_name + ":" + format_spec.partition(":")[-1]
+				format_spec = format_spec.partition(":")[0]
+				yield (literal_text, format_spec, field_name, conversion)
+
+So, to break it down:
+
+Firstly, `parse` is expected to yield an iterator of `literal`, `name`, `spec`, `conversion` tuples.
+
+We'll continue doing that where there is no `spec`, and for function calls, by just yielding the cell.
+
+However, when that isn't the case, we'll slice and append the spec to the name, and swap their positions.
+
+That's really all there is to it, but it is a huge useability improvement as the programmer can now read the code left to write as they expect to be able to.
 ]===]
 %}
 
