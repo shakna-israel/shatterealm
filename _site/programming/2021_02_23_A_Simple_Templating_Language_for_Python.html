@@ -1,0 +1,187 @@
+{%
+	comment_id = '31'
+	subtitle = 'A Simple Templating Language for Python'
+	value = [===[Recently, in my own projects, I've been hitting a bunch of cookie-handling problems in several of the main Python web frameworks. They're edge-cases, so it does make sense, but it is annoying as all hell.
+
+So, being the person that I am, I began to undertake writing my own WSGI framework. It isn't overly difficult - the spec exists and is well-understood, so writing something that is pluggable into any major WSGI server is the case of a day's work. Writing something that can do 99% of what you want to do, two days. Something that fits everything you want to do... Infinity.
+
+However, in the course of writing it, I felt the need to quickly spin up a 0-dependency templating engine to include as part of the framework.
+
+I vaguely recalled something in the past about someone abusing Python's string formatter and spec handler for this purpose, which I was already doing for some fancy URL parsing. So, I dove right in to that and came up with something horrifying.
+
+It's been integrated into my framework (which is _not yet_ API-stable) [here](https://git.sr.ht/~shakna/jwsgi), under the "Template" class.
+
+This is what a basic template might look like:
+
+	My name is {foo:(name, last)}
+
+	<ul>
+	{books:foreach:<li>"{{item[1]}}" by {{item[0]}}</li>}
+	</ul>
+
+	{rockit:if:
+	<p>ROCK IT!</p>
+		:
+	<p>Don't rock it.</p>
+	}
+
+It's widespace agnostic, and fairly lisp-y. (Note that in the function call, you can actually put expansions in instead of names and it'll still work! _Almost_ like quasi-quoting).
+
+And the usage of the template is something like:
+
+	return Template(TEMPLATE_CONTENT, foo=foo, name='eric', last='moe', books={'Author': 'Title'}, rockit=True)
+
+The entire awful system is around 49LOC.
+
+---
+
+### The Class
+
+Our class is going to require two components to it:
+
++ A `format` override so that we can seize a copy of the arguments to later evaluate.
+
++ A `format_field` override so that we can process our corruption of the type specifier and do whatever we feel like with it.
+
+Thus, we're going to start off with something like this:
+
+	import string
+
+	class Template(string.Formatter):
+		def format(self, format_string, *args, **kwargs):
+			return super(Template, self).format(format_string, *args, **kwargs)
+
+		def format_field(self, value, spec):
+			return super(Template, self).format_field(value, spec)
+
+The class should now pretty much do absolutely nothing and be the exact same as Python's normal, and exceedingly powerful, string formatter:
+
+	assert(Template("{a} != {b}", a=2, b=1) == '2 != 1')
+
+### The format Override
+
+We only want to override the format override so that we can pass command arguments to function calls. That's it.
+
+So, with that in mind...
+
+	def format(self, format_string, *args, **kwargs):
+		# Expose arguments...
+		self.args = args
+		self.kwargs = kwargs
+
+		return super(Template, self).format(format_string, *args, **kwargs)
+
+That's it. We don't care about anything else. We're not changing behaviour, we're just adding a side effect.
+
+### foreach
+
+One of the simplest commands to add to the formatter, which will give us an idea of the process for the future, is the foreach command.
+
+	def format_field(self, value, spec):
+		if spec.startswith('foreach'):
+			template = spec.partition(':')[-1]
+			if type(value) is dict:
+				value = value.items()
+			return ''.join([Template().format(template, item=item) for item in value])
+		else:
+			return super(Template, self).format_field(value, spec)
+
+What we're doing here is pretty basic. It's a simple recursion over the arguments, where we ask our own formatter to handle the insides of the formatter.
+
+The key to understanding this is the way the arguments are presented. Basically, the specifier becomes anything from the first ":" to the end of the formatting field:
+
+	"{someValue:specifier-is-here:no:matter:what!}"
+
+So you extract the first specifier, and then pass on the arguments, evaluating and concatenating them.
+
+### Function Calls
+
+Function calls are a little more involved, but not especially. We'll be handing off most of the effort to `shlex`, a builtin Python library, because I am far too lazy to actually do any parsing. (`argparse` might also be a decent alternative, and give you more advanced type handling...)
+
+First, we'll handle the argument-less calls:
+
+	elif spec == '!' or spec == '()':
+		return value()
+
+Which, in use, will look something like:
+
+	{foo:!} or {foo:()}
+
+We let the user either pass in a pair of empty double quotes, or for some magic, a single bang to indicate no arguments. It's an opinionated decision, but one I like. Tweak to your own tastes.
+
+And now, we'll handle the calls that actually require a little bit more intelligence:
+
+	elif spec.startswith("(") and spec.endswith(')'):
+		# Grab the arguments...
+		args = shlex.split(spec[1:-1])
+
+		# Turn the arguments into their equivalents...
+		built_args = []
+		for arg in args:
+			# Allow the user to not realise how args are broken up...
+			if arg.endswith(","):
+				arg = arg[:-1]
+
+			# Use a template-aware sensible default:
+			if arg in self.kwargs:
+				built_args.append(self.kwargs[arg])
+			else:
+				built_args.append('')
+
+		# Call the function:
+		return value(*built_args)
+
+There isn't a lot to think about there. We strip the brackets, and hand off the arguments to shlex. This means that quoted arguments are handled correctly, so the user can pass arguments that are split up into the formatter at the top level, and so on. There's a few edge-cases, like pipes being passed around on their own, but that's fine for the most part. Quotes can fix those problems.
+
+We strip hanging commas from arguments, because shlex doesn't split on commas, obviously, but the user is likely to make that mistake, because they think what they're looking at is vaguely Python.
+
+Then we make another opinionated decision: What if the user mentions a variable that doesn't exist? We could raise a KeyError. That would make sense. But this is a template system intended for the web, so passing in an empty string also makes sense.
+
+Finally, we just deliver the payload. Anything goes wrong, and Python will conveniently tell us where and what part of the template the error happened in. So we don't need to catch any exceptions.
+
+We use it somewhat like:
+
+	{foo:(var1, var2)}
+	{foo:(var1 var2)}
+	{foo:(var1, "var2")}
+
+Mix and match as fits your way of doing things.
+
+### If statements
+
+No template language should be considered complete without `if` statements. I don't care if it can't do function calls. But if you can't do a conditional... I hate you.
+
+Unfortunately, this is where things get a little bit... Unreadable.
+
+We need to handle two cases:
+
++ `<object>:if:<if_true>`
+
++ `<object>:if:<if_true>:<if_false>`
+
+	elif spec.startswith('if'):
+		x = len(spec.partition(':')[-1].partition(':')[-1] or '')
+		# If-only
+		if x == 0:
+			return (value and spec.partition(':')[-1]) or (spec.partition(':')[-1].partition(':')[-1] or '')
+		else:
+			# If-else
+			x = x + 1
+			return (value and spec.partition(':')[-1][:-x]) or (spec.partition(':')[-1].partition(':')[-1] or '')
+
+We accomplish the above by some fancy string cutting. It looks fairly unreadable, but it isn't overly complicated code.
+
+It's basically determining lengths and cutting them apart, before returning only the part we're interested in.
+
+### Summing Up
+
+With that, we're done!
+
+This awful damn thing works, and is actually rather fast, thanks to being based on part of CPython that is fairly well optimised. It isn't something you'd want to use every day, but it is more than good enough to use for simple tasks here and there.
+
+I haven't, and probably won't, split it out of my main project, but you can find the complete class code for it over [here](https://git.sr.ht/~shakna/jwsgi/tree/master/item/jwsgi.py#L21). Obey the license, and you can rip it out and into whatever you feel like.
+
+]===]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
