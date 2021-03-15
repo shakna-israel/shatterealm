@@ -136,15 +136,15 @@ Using that integer, we can now create the structure that _should_ reflect the un
 
 In fact...
 
-if object.__basicsize__ != ctypes.sizeof(_PyObject):
-	class _PyObject(ctypes.Structure):
-		pass
-	_PyObject._fields_ = [
-		('_ob_next', ctypes.POINTER(_PyObject)),
-		('_ob_prev', ctypes.POINTER(_PyObject)),
-		('ob_refcnt', _Py_ssize_t),
-		('ob_type', ctypes.POINTER(_PyObject))
-	]
+	if object.__basicsize__ != ctypes.sizeof(_PyObject):
+		class _PyObject(ctypes.Structure):
+			pass
+		_PyObject._fields_ = [
+			('_ob_next', ctypes.POINTER(_PyObject)),
+			('_ob_prev', ctypes.POINTER(_PyObject)),
+			('ob_refcnt', _Py_ssize_t),
+			('ob_type', ctypes.POINTER(_PyObject))
+		]
 
 ... We need a bit more code for another kind of basic `object`.
 
