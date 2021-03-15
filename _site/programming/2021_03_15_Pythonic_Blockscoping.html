@@ -1,0 +1,216 @@
+{%
+        comment_id = '32'
+        subtitle = 'Pythonic Blockscoping'
+        value = [[Ever get sick of temporary variables in Python? I do.
+
+In something like Lua I can throw them into a do-block and they will shadow correctly, and be tossed when I'm done, with a clear creation/removal point.
+
+Something like:
+
+	local username
+	do
+		local var = get_data()
+		username = var.get_user()
+	end
+
+	print(username)
+
+You can sort of do this in Python, most of the time. But you'll end up either using `_` a lot, which may not be signalled to the GC as a dead variable and stick around, or it makes it harder to deal with exceptions in a clear way. As everything in Python may raise an exception.
+
+So, to avoid the callback hell (the exception handling case), you tend to write out your variables. And then manually issue a `del` on them.
+
+Python actually already has a utility that works a lot like Lua's `do`, it just isn't available on everything: the Context Manager.
+
+The "right way" to do things in Python often looks like:
+
+	import contextlib
+
+	@contextlib.contextmanager
+	def bind(value):
+		yield value
+
+	with bind(get_data()) as var:
+		username = var.get_user()
+
+	print(username)
+
+This has two problems with it:
+
++ It isn't generic.
+
++ The programmer needs to specify what they want to context manage each time.
+
+---
+
+## Code! Give me code!
+
+The code presented in this blogpost is accessible [here](https://git.sr.ht/~shakna/blockscopepy).
+
+---
+
+## The Goal
+
+What we really want, is something extremely flexible. Something that doesn't care what is being handed to the Context Manager, but can use it.
+
+Something like:
+
+	with get_data() as var:
+		username = var.get_user()
+
+	print(username)
+
+Which could equally be:
+
+	with {"a": 10} as tmp:
+		print(tmp)
+
+For a context manager to work, we just need `__enter__` and `__exit__` methods that don't do much, if anything.
+
++ `__enter__` should return the object it gets given.
+
++ `__exit__` should ignore its arguments, and do nothing.
+
+---
+
+## Attempt One: Let's mutate `object`!
+
+Thankfully, we can usually just add methods to whatever in Python, allowing us to override it to behave the way we want.
+
+	object.__enter__ = bind
+
+	> TypeError: can't set attributes of built-in/extension type 'object'
+
+To aid in both memory use and performance, you can't modify a built-in type. And most built-in types won't have a `__dict__` entry, which is how you attach a method.
+
+So, we can't do this naively, and safely.
+
+---
+
+## Attempt Two: Python is _very_ dynamic.
+
+Thankfully, I'm not the first person to attempt to monkey-patch a builtin. [Armin Ronacher](https://lucumr.pocoo.org/) managed to succeed in doing so back with Python 2.7. So the code was outdated, and wouldn't run, and was written as a sort of once-off.
+
+However, with a little bit of tweaking, we can add our own `__dict__` to a builtin type.
+
+It does include modifying the CPython type itself, so probably won't work on anything but CPython.
+
+It probably will break if CPython updates, because it is based on assumptions that aren't guaranteed.
+
+It probably will break anything that expects a builtin to raise a TypeError on `setattr`.
+
+It will wreck performance, as we're going to modify the base `object` type.
+
+It _may_ break some context managers. It didn't break the ones I tested, but that is probably incidental.
+
+I haven't tested it against a wide variety of Python versions, but it does work under CPython 3.9.2. Probably works on earlier versions.
+
+Whelp, warnings out of the way... Let's go make Python work the way _I_ want.
+
+	import ctypes
+	try:
+		from types import DictProxyType as MappingProxyType
+	except:
+		from types import MappingProxyType
+	from types import MethodType
+	from contextlib import contextmanager
+
+The `DictProxyType` was [removed](https://hg.python.org/cpython/rev/15649aef2db5) back in '07. It wasn't exactly one-to-one replaced with `MappingProxyType`, but for our purposes they'll work identically.
+
+Next up, we need to work out how big an integer is:
+
+	if hasattr(ctypes.pythonapi, 'Py_InitModule4_64'):
+		_Py_ssize_t = ctypes.c_int64
+	else:
+		_Py_ssize_t = ctypes.c_int
+
+Obviously, if you're working outside of CPython, this is probably going to fall apart immediately at this point. I doubt it'll work under MicroPython. I really doubt it'll work under any of the Java implementations. It might possible work under PyPy, but probably not.
+
+	class _PyObject(ctypes.Structure):
+		pass
+	_PyObject._fields_ = [
+		('ob_refcnt', _Py_ssize_t),
+		('ob_type', ctypes.POINTER(_PyObject))
+	]
+
+Using that integer, we can now create the structure that _should_ reflect the underlying `object` type, but in absolutely no way is that guaranteed. We're a single API change away from it exploding.
+
+In fact...
+
+if object.__basicsize__ != ctypes.sizeof(_PyObject):
+	class _PyObject(ctypes.Structure):
+		pass
+	_PyObject._fields_ = [
+		('_ob_next', ctypes.POINTER(_PyObject)),
+		('_ob_prev', ctypes.POINTER(_PyObject)),
+		('ob_refcnt', _Py_ssize_t),
+		('ob_type', ctypes.POINTER(_PyObject))
+	]
+
+... We need a bit more code for another kind of basic `object`.
+
+Thankfully most things in the internal structure are just pointers, so we don't really need to know their size as the programmer, we can let the language tell us.
+
+Next we need the class where we'll install our extra methods:
+
+	class _DictProxy(_PyObject):
+		_fields_ = [('dict', ctypes.POINTER(_PyObject))]
+
+This, again, follows an API that isn't guaranteed. If it changes, everything will blow up in our face. But, it has been fairly stable over the years.
+
+	def reveal_dict(proxy):
+		if not isinstance(proxy, MappingProxyType):
+			raise TypeError('{} expected'.format(MappingProxyType))
+		dp = _DictProxy.from_address(id(proxy))
+		ns = {}
+		ctypes.pythonapi.PyDict_SetItem(ctypes.py_object(ns),
+										ctypes.py_object(None),
+										dp.dict)
+		return ns[None]
+
+This odd little bit of code allows us to peak inside our proxy type as if it were a normal dictionary, installing it in-place, basically. Most of this is currently reliable to not change in future versions of Python, thankfully... But using `id` should be warning you that havoc awaits if anything begins futzing with the memory layout.
+
+We pass our proxy type to format - because we are actually using two different proxy types, depending which is available. Better to report the right one to the programmer when something goes wrong!
+
+Finally, we need a way to safely access our dictionary, the same dictionary, each time:
+
+	def get_class_dict(cls):
+		d = getattr(cls, '__dict__', None)
+		if d is None:
+			raise TypeError('No dictionary found for: {}'.format(cls))
+		if isinstance(d, MappingProxyType):
+			return reveal_dict(d)
+		return d
+
+Now that is all out of the way, we can finally do our monkey patch!
+
+	d = get_class_dict(object)
+	d['__enter__'] = lambda x: x
+	d['__exit__'] = lambda x,y,z,w: None
+
+The results are exactly what we wanted, at least as far as Pythonic behaviour is concerned:
+
+	import subprocess
+	import json
+
+	import blockscope
+
+	with subprocess.run(["tree", "-ixpsugJ", "."], capture_output=True) as data:
+		tree = json.loads(data.stdout.decode())
+
+	print(tree)
+
+The `subprocess.run` call inherits our context manager, and makes things clear to the programmer.
+
+Unfortunately, Python's context manager doesn't shadow variables and _will_ happily overwrite them, but that's a normal Python footgun that the programmer should be aware of.
+
+We've not _added) any contextual overhead for the programmer, whilst extending the syntax to allow us to do what we set out to do:
+
+	with {"a": 12} as obj:
+		print(obj)
+
+And any day you can enable the programmer to do more, without introducing a mental burden, is a good day in my book.
+
+]]
+%}
+
+{{ include(site_directory .. '/post.tpl')}}
