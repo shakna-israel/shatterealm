@@ -203,7 +203,7 @@ The `subprocess.run` call inherits our context manager, and makes things clear t
 
 Unfortunately, Python's context manager doesn't shadow variables and _will_ happily overwrite them, but that's a normal Python footgun that the programmer should be aware of.
 
-We've not _added) any contextual overhead for the programmer, whilst extending the syntax to allow us to do what we set out to do:
+We've not _added_ any contextual overhead for the programmer, whilst extending the syntax to allow us to do what we set out to do:
 
 	with {"a": 12} as obj:
 		print(obj)
